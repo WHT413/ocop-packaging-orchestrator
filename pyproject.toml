@@ -8,6 +8,7 @@ authors = [
 ]
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "langgraph>=1.2.6",
     "opencv-python-headless>=4.13.0.92",
     "pillow>=12.2.0",
     "pydantic>=2.13.4",
