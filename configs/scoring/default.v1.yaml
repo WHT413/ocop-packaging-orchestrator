@@ -1,0 +1,2 @@
+version: default.v1
+weights: {constraint_pass: 100, center_title: 10, qr_readable: 20}

@@ -1,0 +1,26 @@
+project_id: tea_basic
+product:
+  name: "Tra thao moc OCOP"
+  category: "Tra"
+  net_content: "100 g"
+  ingredients: "Tra xanh, hoa nhai, co ngot, thao moc tu nhien. Huong vi diu nhe, phu hop su dung hang ngay."
+  usage_instructions: "Ham 3-5 g voi nuoc nong 90 do C trong 5 phut."
+  storage_instructions: "Bao quan noi kho rao, thoang mat, tranh anh nang truc tiep."
+  expiry_or_shelf_life: "12 thang ke tu ngay san xuat"
+producer:
+  manufacturer_name: "Hop tac xa Tra Nui Xanh"
+  manufacturer_address: "Xa Minh Thanh, Viet Nam"
+  contact_phone: "0900000000"
+origin_text: "San pham cua dia phuong, dong goi tai Viet Nam"
+branding:
+  logos:
+    - asset_id: brand
+      path: assets/brand.png
+      asset_type: png
+      role: brand
+  ocop:
+    logo_path: assets/ocop.png
+    star_count: 3
+packaging:
+  size_id: OCOP_130X150
+  qr_payload: "https://example.com/ocop/tea_basic"

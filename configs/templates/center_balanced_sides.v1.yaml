@@ -1,0 +1,8 @@
+template_id: center_balanced_sides_v1
+family: center_balanced_sides
+regions:
+  title: {panel: center_panel, x: 0.10, y: 0.24, w: 0.80, h: 0.16, rotations: [0]}
+  logos: {panel: center_panel, x: 0.15, y: 0.07, w: 0.70, h: 0.12, rotations: [0]}
+  left_text: {panel: left_panel, x: 0.10, y: 0.20, w: 0.80, h: 0.60, rotations: [0, 90]}
+  right_text: {panel: right_panel, x: 0.10, y: 0.20, w: 0.80, h: 0.42, rotations: [0, 270]}
+  qr: {panel: right_panel, x: 0.25, y: 0.68, w: 0.50, h: 0.14, rotations: [0]}
