@@ -54,6 +54,9 @@ disable_error_code = ["import-untyped"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--cov=src/ocop_pack --cov-report=term-missing --cov-fail-under=80 --cov-config=pyproject.toml"
+markers = [
+    "real_ai: tests that call configured sandbox AI providers and may cost money",
+]
 
 [tool.coverage.run]
 source = ["src/ocop_pack"]

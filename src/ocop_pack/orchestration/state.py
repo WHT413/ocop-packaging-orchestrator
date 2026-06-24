@@ -27,8 +27,11 @@ class PackagingState(TypedDict):
     project_path: str
     project_hash: str
     project: ProjectSpec | None
+    planner_request_ref: str | None
     design_plan_ref: str | None
+    design_plan_hash: str | None
     artwork_refs: list[str]
+    artwork_hashes: dict[str, str]
     candidate_refs: list[str]
     selected_candidate_id: str | None
     selected_candidate_hash: str | None
@@ -42,6 +45,13 @@ class PackagingState(TypedDict):
     vision_calls: int
     revision_count: int
     spent_estimate: float
+    planner_provider: str | None
+    planner_model: str | None
+    image_provider: str | None
+    image_model: str | None
+    provider_attempts: int
+    cache_hits: int
+    token_usage: dict[str, int]
     completed_nodes: list[str]
     artifact_refs: dict[str, str]
     errors: list[WorkflowError]
@@ -55,8 +65,11 @@ def initial_state(run_id: str, project_path: str, thread_id: str | None = None) 
         "project_path": project_path,
         "project_hash": "",
         "project": None,
+        "planner_request_ref": None,
         "design_plan_ref": None,
+        "design_plan_hash": None,
         "artwork_refs": [],
+        "artwork_hashes": {},
         "candidate_refs": [],
         "selected_candidate_id": None,
         "selected_candidate_hash": None,
@@ -70,6 +83,13 @@ def initial_state(run_id: str, project_path: str, thread_id: str | None = None) 
         "vision_calls": 0,
         "revision_count": 0,
         "spent_estimate": 0.0,
+        "planner_provider": None,
+        "planner_model": None,
+        "image_provider": None,
+        "image_model": None,
+        "provider_attempts": 0,
+        "cache_hits": 0,
+        "token_usage": {},
         "completed_nodes": [],
         "artifact_refs": {},
         "errors": [],

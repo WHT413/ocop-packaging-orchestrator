@@ -2,24 +2,45 @@ from __future__ import annotations
 
 import json
 import shutil
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, cast
 
+from ocop_pack.agents.design_planner.agent import (
+    build_planner_input,
+    default_prompts,
+    planner_input_hash,
+)
+from ocop_pack.agents.design_planner.validator import validate_immutable_facts
+from ocop_pack.application.ports.artwork_provider import ArtworkRequest, ArtworkResult
+from ocop_pack.application.ports.planner import PlannerRequest
+from ocop_pack.cache.cache_keys import stable_cache_key
 from ocop_pack.domain.dieline import load_dieline
 from ocop_pack.domain.layout import LayoutCandidate, LayoutManifest
 from ocop_pack.domain.project import ProjectSpec
 from ocop_pack.domain.qa import QAReport
 from ocop_pack.engine.candidate_generator import generate_candidates
 from ocop_pack.engine.constraints import candidate_passed, evaluate_candidate
+from ocop_pack.infrastructure.config import ExecutionSettings, ImageSettings, PlannerSettings
 from ocop_pack.observability.events import EventLog
 from ocop_pack.orchestration.budgets import BudgetPolicy, BudgetTracker
 from ocop_pack.orchestration.checkpoint import LocalCheckpointStore
 from ocop_pack.orchestration.errors import WorkflowError, WorkflowException
 from ocop_pack.orchestration.idempotency import file_hash, mark_completed, stable_hash
 from ocop_pack.orchestration.state import ApprovalRecord, PackagingState, initial_state
-from ocop_pack.orchestration.status import RunStatus, assert_transition
-from ocop_pack.providers.mocks.fixture_artwork_provider import FixtureArtworkProvider
-from ocop_pack.providers.mocks.mock_planner import MockDesignPlanner
+from ocop_pack.orchestration.status import TERMINAL_STATUSES, RunStatus, assert_transition
+from ocop_pack.provenance.models import ProviderContext
+from ocop_pack.providers.common.errors import (
+    ProviderConfigurationError,
+    ProviderError,
+    ProviderSchemaError,
+)
+from ocop_pack.providers.common.retry import RetryPolicy, run_with_retry
+from ocop_pack.providers.image.fixture import FixtureArtworkProvider
+from ocop_pack.providers.image.openai_compatible import OpenAICompatibleImageProvider
+from ocop_pack.providers.planner.mock import MockPlannerProvider
+from ocop_pack.providers.planner.openai_compatible import OpenAICompatiblePlannerProvider
+from ocop_pack.schemas.design_planner import DesignPlan
 from ocop_pack.services.qa_service import qa_candidate
 from ocop_pack.services.render_service import render_manifest
 from ocop_pack.services.validation_service import load_project, project_hash
@@ -27,8 +48,8 @@ from ocop_pack.storage.local_artifact_store import LocalArtifactStore
 
 SIDE_EFFECT_NODES = {
     "validate_input",
-    "prepare_design_inputs",
-    "load_fixture_artwork",
+    "plan_design",
+    "generate_artworks",
     "generate_layout_candidates",
     "render_candidate_previews",
     "run_draft_qa",
@@ -38,17 +59,36 @@ SIDE_EFFECT_NODES = {
     "export_bundle",
 }
 
+MANDATORY_ARTWORK_PROHIBITION = (
+    "Artwork layer only. No text, no letters, no words, no numbers. "
+    "No logos, no trademarks, no OCOP marks. No QR codes, no barcodes, "
+    "no certification marks. No packaging mockup and no final label design. "
+    "No medical or legal claims."
+)
+
+
+def build_artwork_prompt(
+    concept_prompt: str, visual_direction: str, aspect_ratio: str
+) -> tuple[str, str]:
+    positive = (
+        f"{concept_prompt}. Visual direction: {visual_direction}. "
+        f"Target aspect ratio: {aspect_ratio}. Background artwork layer for deterministic layout."
+    )
+    return positive, MANDATORY_ARTWORK_PROHIBITION
+
 
 class WorkflowRunner:
     def __init__(
         self,
         runs_root: Path = Path("runs"),
         budget_policy: BudgetPolicy | None = None,
+        online: bool | None = None,
     ) -> None:
         self.store = LocalArtifactStore(runs_root)
         self.checkpoints = LocalCheckpointStore(runs_root)
         self.events = EventLog(runs_root)
         self.budget = BudgetTracker(budget_policy or BudgetPolicy())
+        self.online = ExecutionSettings().online if online is None else online
 
     def start(
         self, project_path: Path, run_id: str, crash_after: str | None = None
@@ -138,6 +178,7 @@ class WorkflowRunner:
             RunStatus.WAITING_APPROVAL,
             RunStatus.EXPORTED,
             RunStatus.REJECTED,
+            *TERMINAL_STATUSES,
         }:
             node = self._next_node(state)
             getattr(self, f"_{node}")(state)
@@ -156,8 +197,8 @@ class WorkflowRunner:
     def _next_node(self, state: PackagingState) -> str:
         return {
             RunStatus.CREATED: "validate_input",
-            RunStatus.INPUT_VALIDATED: "prepare_design_inputs",
-            RunStatus.DESIGN_INPUTS_READY: "load_fixture_artwork",
+            RunStatus.INPUT_VALIDATED: "plan_design",
+            RunStatus.DESIGN_INPUTS_READY: "generate_artworks",
             RunStatus.ARTWORK_READY: "generate_layout_candidates",
             RunStatus.CANDIDATES_READY: "render_candidate_previews",
             RunStatus.PREVIEWS_READY: "run_draft_qa",
@@ -176,20 +217,162 @@ class WorkflowRunner:
         )
         self._transition(state, RunStatus.INPUT_VALIDATED, "validate_input")
 
-    def _prepare_design_inputs(self, state: PackagingState) -> None:
-        self.budget.check(state, "prepare_design_inputs")
-        plan = MockDesignPlanner().create_plan(self._project(state))
-        state["design_plan_ref"] = self.store.write_json_once(
-            state["run_id"], "mock/design_plan.json", plan
+    def _plan_design(self, state: PackagingState) -> None:
+        self.budget.check(state, "plan_design")
+        project = self._project(state)
+        prompts = default_prompts()
+        planner_input = build_planner_input(project)
+        input_hash = planner_input_hash(planner_input, prompts)
+        prompt_hash = sha256("".join(p.sha256 for p in prompts).encode("utf-8")).hexdigest()
+        request = PlannerRequest(
+            planner_input=planner_input,
+            prompt_id="design_planner",
+            prompt_version="v1",
+            prompt_hash=prompt_hash,
+            input_hash=input_hash,
+            model_config_payload={"temperature": 0},
         )
-        self._transition(state, RunStatus.DESIGN_INPUTS_READY, "prepare_design_inputs")
+        state["planner_request_ref"] = self.store.write_json_once(
+            state["run_id"], "plan/planner_request.json", request.model_dump(mode="json")
+        )
+        existing = self.store.path(state["run_id"], "plan/design_plan.json")
+        if existing.exists():
+            plan = DesignPlan.model_validate_json(existing.read_text(encoding="utf-8"))
+            state["cache_hits"] += 1
+        else:
+            try:
+                planner_settings = PlannerSettings()
+                provider = (
+                    OpenAICompatiblePlannerProvider()
+                    if self.online
+                    and planner_settings.provider == "openai-compatible"
+                    else MockPlannerProvider()
+                )
+                result, attempts = run_with_retry(
+                    lambda: provider.create_design_plan(
+                        request,
+                        ProviderContext(
+                            run_id=state["run_id"], thread_id=state["thread_id"], node="plan_design"
+                        ),
+                    ),
+                    RetryPolicy(max_attempts=2, initial_backoff_seconds=0.01),
+                )
+            except ProviderConfigurationError:
+                self._transition(state, RunStatus.PROVIDER_CONFIGURATION_FAILED, "plan_design")
+                return
+            except ProviderSchemaError:
+                self._transition(state, RunStatus.PLANNING_FAILED, "plan_design")
+                return
+            except ProviderError:
+                self._transition(state, RunStatus.PROVIDER_FAILED, "plan_design")
+                return
+            state["provider_attempts"] += attempts
+            state["llm_calls"] += 1
+            plan = result.design_plan
+            if validate_immutable_facts(project, plan):
+                self._transition(state, RunStatus.PLANNING_FAILED, "plan_design")
+                return
+            state["planner_provider"] = result.provenance.provider
+            state["planner_model"] = result.provenance.model
+            state["spent_estimate"] += result.provenance.cost_estimate
+            state["token_usage"] = result.provenance.usage.model_dump(mode="json")
+            self.store.write_json_once(
+                state["run_id"], "plan/design_plan.json", plan.model_dump(mode="json")
+            )
+            self.store.write_json_once(
+                state["run_id"],
+                "plan/planner_provenance.json",
+                result.provenance.model_dump(mode="json"),
+            )
+        state["design_plan_ref"] = str(existing)
+        state["design_plan_hash"] = stable_hash(plan.model_dump(mode="json"))
+        self._transition(state, RunStatus.DESIGN_INPUTS_READY, "plan_design")
 
-    def _load_fixture_artwork(self, state: PackagingState) -> None:
-        artwork = FixtureArtworkProvider().load_artwork(self._project(state))
-        ref = self.store.write_json_once(state["run_id"], "mock/artwork_manifest.json", artwork)
-        state["artwork_refs"] = [ref]
-        self.store.write_json_once(state["run_id"], "input/asset_manifest.json", artwork)
-        self._transition(state, RunStatus.ARTWORK_READY, "load_fixture_artwork")
+    def _generate_artworks(self, state: PackagingState) -> None:
+        plan_path = Path(
+            state["design_plan_ref"] or self.store.path(state["run_id"], "plan/design_plan.json")
+        )
+        plan = DesignPlan.model_validate_json(plan_path.read_text(encoding="utf-8"))
+        refs: list[str] = []
+        provider = None
+        for concept in plan.artwork_concepts[:2]:
+            path = self.store.path(state["run_id"], f"artwork/{concept.concept_id}.png")
+            if path.exists():
+                refs.append(str(path))
+                state["cache_hits"] += 1
+                state["artwork_hashes"][concept.concept_id] = file_hash(path)
+                continue
+            prompt, negative_prompt = build_artwork_prompt(
+                concept.prompt, plan.visual_direction, "square"
+            )
+            req_hash = stable_cache_key(
+                {
+                    "concept": concept.model_dump(mode="json"),
+                    "prompt": prompt,
+                    "negative_prompt": negative_prompt,
+                    "online": self.online,
+                    "target_dimensions": [1024, 1024],
+                    "prompt_template_version": "v1",
+                }
+            )
+            request = ArtworkRequest(
+                concept_id=concept.concept_id,
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                target_width_px=1024,
+                target_height_px=1024,
+                request_hash=req_hash,
+            )
+            try:
+                image_settings = ImageSettings()
+                provider = (
+                    OpenAICompatibleImageProvider()
+                    if self.online
+                    and image_settings.provider == "openai-compatible"
+                    else FixtureArtworkProvider()
+                )
+
+                def generate_call(
+                    provider_arg: FixtureArtworkProvider | OpenAICompatibleImageProvider = provider,
+                    request_arg: ArtworkRequest = request,
+                ) -> ArtworkResult:
+                    return provider_arg.generate(
+                        request_arg,
+                        ProviderContext(
+                            run_id=state["run_id"],
+                            thread_id=state["thread_id"],
+                            node="generate_artworks",
+                        ),
+                        self.store.path(state["run_id"], "artwork"),
+                    )
+
+                result, attempts = run_with_retry(
+                    generate_call,
+                    RetryPolicy(max_attempts=2, initial_backoff_seconds=0.01),
+                )
+            except ProviderConfigurationError:
+                self._transition(
+                    state, RunStatus.PROVIDER_CONFIGURATION_FAILED, "generate_artworks"
+                )
+                return
+            except ProviderError:
+                self._transition(state, RunStatus.ARTWORK_FAILED, "generate_artworks")
+                return
+            state["provider_attempts"] += attempts
+            state["image_calls"] += 1
+            refs.append(result.artifact_ref)
+            state["artwork_hashes"][concept.concept_id] = result.sha256
+            if result.provenance:
+                self.store.write_json_once(
+                    state["run_id"],
+                    f"artwork/{concept.concept_id}.provenance.json",
+                    result.provenance.model_dump(mode="json"),
+                )
+        state["artwork_refs"] = refs
+        if provider is not None:
+            state["image_provider"] = provider.provider
+            state["image_model"] = provider.model
+        self._transition(state, RunStatus.ARTWORK_READY, "generate_artworks")
 
     def _generate_layout_candidates(self, state: PackagingState) -> None:
         project = self._project(state)

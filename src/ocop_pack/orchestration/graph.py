@@ -15,8 +15,8 @@ def build_graph() -> Any:
     graph = StateGraph(PackagingState)
     for node in [
         "validate_input",
-        "prepare_design_inputs",
-        "load_fixture_artwork",
+        "plan_design",
+        "generate_artworks",
         "generate_layout_candidates",
         "apply_hard_constraints",
         "rank_deterministically",
@@ -30,9 +30,9 @@ def build_graph() -> Any:
     ]:
         graph.add_node(node, _passthrough)
     graph.add_edge(START, "validate_input")
-    graph.add_edge("validate_input", "prepare_design_inputs")
-    graph.add_edge("prepare_design_inputs", "load_fixture_artwork")
-    graph.add_edge("load_fixture_artwork", "generate_layout_candidates")
+    graph.add_edge("validate_input", "plan_design")
+    graph.add_edge("plan_design", "generate_artworks")
+    graph.add_edge("generate_artworks", "generate_layout_candidates")
     graph.add_edge("generate_layout_candidates", "apply_hard_constraints")
     graph.add_edge("apply_hard_constraints", "rank_deterministically")
     graph.add_edge("rank_deterministically", "render_candidate_previews")

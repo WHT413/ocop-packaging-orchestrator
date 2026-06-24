@@ -12,7 +12,12 @@ from ocop_pack.domain.dieline import load_dieline
 from ocop_pack.domain.layout import LayoutManifest
 from ocop_pack.domain.runs import RunRecord, RunStatus
 from ocop_pack.engine.candidate_generator import generate_candidates
-from ocop_pack.infrastructure.config import DEFAULT_DB_URL
+from ocop_pack.infrastructure.config import (
+    DEFAULT_DB_URL,
+    ExecutionSettings,
+    ImageSettings,
+    PlannerSettings,
+)
 from ocop_pack.infrastructure.persistence.repositories import (
     SqlArtifactRepository,
     SqlCandidateRepository,
@@ -33,10 +38,16 @@ from ocop_pack.services.render_service import render_manifest
 from ocop_pack.services.validation_service import file_sha256, load_project, project_hash
 
 app = typer.Typer()
+providers_app = typer.Typer(help="Provider capability checks")
+app.add_typer(providers_app, name="providers")
 
 
 def _runner() -> WorkflowRunner:
     return WorkflowRunner()
+
+
+def _workflow_runner(online: bool | None = None) -> WorkflowRunner:
+    return WorkflowRunner(online=online)
 
 
 def _handle_workflow_error(exc: WorkflowException, verbose: bool = False) -> None:
@@ -44,6 +55,42 @@ def _handle_workflow_error(exc: WorkflowException, verbose: bool = False) -> Non
         raise exc
     typer.echo(f"Error [{exc.error.code}]: {exc.error.message}", err=True)
     raise typer.Exit(2) from exc
+
+
+@providers_app.command("check")
+def providers_check(
+    planner: bool = typer.Option(False, "--planner"),
+    image: bool = typer.Option(False, "--image"),
+) -> None:
+    """Validate provider config without printing secrets.
+
+    Offline providers are treated as capability-pass for CI. Sandbox real network
+    probes are intentionally performed by the provider adapters during `run`.
+    """
+    check_all = not planner and not image
+    try:
+        if check_all or planner:
+            planner_settings = PlannerSettings()
+            typer.echo(
+                f"planner provider={planner_settings.provider} model={planner_settings.model}"
+            )
+            if planner_settings.provider != "mock" and not (
+                planner_settings.base_url and planner_settings.api_key
+            ):
+                typer.echo("planner config invalid: base_url/api_key required", err=True)
+                raise typer.Exit(10)
+        if check_all or image:
+            image_settings = ImageSettings()
+            typer.echo(f"image provider={image_settings.provider} model={image_settings.model}")
+            if image_settings.provider != "fixture" and not (
+                image_settings.base_url and image_settings.api_key
+            ):
+                typer.echo("image config invalid: base_url/api_key required", err=True)
+                raise typer.Exit(10)
+    except ValueError as exc:
+        typer.echo(f"provider config invalid: {exc}", err=True)
+        raise typer.Exit(10) from exc
+    typer.echo("provider configuration check passed")
 
 
 def _session() -> Session:
@@ -92,11 +139,12 @@ def generate_candidates_cmd(project_yaml: Path, run_id: str = typer.Option(...))
 def run_workflow(
     project_yaml: Path,
     run_id: str = typer.Option(...),
+    online: bool = typer.Option(ExecutionSettings().online, "--online/--offline"),
     crash_after: str | None = typer.Option(None),
     verbose: bool = typer.Option(False, "--verbose"),
 ) -> None:
     try:
-        state = _runner().start(project_yaml, run_id, crash_after=crash_after)
+        state = _workflow_runner(online).start(project_yaml, run_id, crash_after=crash_after)
     except WorkflowException as exc:
         _handle_workflow_error(exc, verbose)
     typer.echo(f"Run: {state['run_id']}")
@@ -242,11 +290,12 @@ def reject_cmd(
 @app.command("resume")
 def resume_cmd(
     run_id: str = typer.Option(...),
+    online: bool = typer.Option(ExecutionSettings().online, "--online/--offline"),
     crash_after: str | None = typer.Option(None),
     verbose: bool = typer.Option(False, "--verbose"),
 ) -> None:
     try:
-        state = _runner().resume(run_id, crash_after=crash_after)
+        state = _workflow_runner(online).resume(run_id, crash_after=crash_after)
     except WorkflowException as exc:
         _handle_workflow_error(exc, verbose)
     typer.echo(f"Run: {run_id}")
@@ -269,11 +318,33 @@ def export_cmd(
 
 
 @app.command()
-def inspect(run_id: str) -> None:
+def inspect(run_id: str, json_output: bool = typer.Option(False, "--json")) -> None:
     try:
         state = _runner().load_state(run_id)
+        if json_output:
+            serializable = {
+                k: (
+                    v.model_dump(mode="json")
+                    if hasattr(v, "model_dump")
+                    else str(v)
+                    if k == "status"
+                    else v
+                )
+                for k, v in state.items()
+                if k != "project"
+            }
+            typer.echo(json.dumps(serializable, indent=2, default=str))
+            return
         typer.echo(f"Run: {run_id}")
         typer.echo(f"Status: {state['status']}")
+        typer.echo(f"Planner: {state['planner_provider']}/{state['planner_model']}")
+        typer.echo(f"Image: {state['image_provider']}/{state['image_model']}")
+        typer.echo(
+            f"Calls: llm={state['llm_calls']} image={state['image_calls']} "
+            f"cache_hits={state['cache_hits']}"
+        )
+        typer.echo(f"Design plan: {state['design_plan_ref']}")
+        typer.echo(f"Artwork: {state['artwork_refs']}")
         typer.echo(f"Preview: {state['preview_refs'][0] if state['preview_refs'] else None}")
         typer.echo(f"Final PNG: {state['final_png_ref']}")
         typer.echo(f"Final PDF: {state['final_pdf_ref']}")
@@ -283,3 +354,13 @@ def inspect(run_id: str) -> None:
     with _session() as s:
         typer.echo(SqlRunRepository(s).get(run_id))
         typer.echo([a.model_dump() for a in SqlArtifactRepository(s).list_by_run(run_id)])
+
+
+@app.command("provenance")
+def provenance_cmd(run_id: str) -> None:
+    root = Path("runs") / run_id
+    for path in sorted((root / "plan").glob("*provenance.json")) + sorted(
+        (root / "artwork").glob("*.provenance.json")
+    ):
+        typer.echo(str(path))
+        typer.echo(path.read_text(encoding="utf-8"))
