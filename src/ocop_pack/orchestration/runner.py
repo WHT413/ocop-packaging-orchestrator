@@ -244,8 +244,7 @@ class WorkflowRunner:
                 planner_settings = PlannerSettings()
                 provider = (
                     OpenAICompatiblePlannerProvider()
-                    if self.online
-                    and planner_settings.provider == "openai-compatible"
+                    if self.online and planner_settings.provider == "openai-compatible"
                     else MockPlannerProvider()
                 )
                 result, attempts = run_with_retry(
@@ -327,8 +326,7 @@ class WorkflowRunner:
                 image_settings = ImageSettings()
                 provider = (
                     OpenAICompatibleImageProvider()
-                    if self.online
-                    and image_settings.provider == "openai-compatible"
+                    if self.online and image_settings.provider == "openai-compatible"
                     else FixtureArtworkProvider()
                 )
 

@@ -54,7 +54,8 @@ class OpenAICompatiblePlannerProvider:
                 {"role": "system", "content": system_prompt},
                 {
                     "role": "user",
-                    "content": task_prompt + "\n\n<project_data_json>\n"
+                    "content": task_prompt
+                    + "\n\n<project_data_json>\n"
                     + request.planner_input.model_dump_json()
                     + "\n</project_data_json>",
                 },
