@@ -9,10 +9,10 @@ from ocop_pack.orchestration.state import PackagingState
 
 @dataclass(frozen=True)
 class BudgetPolicy:
-    max_llm_calls: int = 0
-    max_image_calls: int = 0
+    max_llm_calls: int = 2
+    max_image_calls: int = 3
     max_vision_calls: int = 0
-    max_revisions: int = 3
+    max_revisions: int = 0
     max_candidates: int = 50
     max_spent_estimate: float = 0.0
     max_elapsed_seconds: float = 300.0
