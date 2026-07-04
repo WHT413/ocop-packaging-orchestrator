@@ -16,6 +16,7 @@ htmlcov/
 # Local data and generated outputs
 data/*.db
 data/*.sqlite*
+data/runs_acceptance/
 runs/
 
 # OS/editor
@@ -25,3 +26,8 @@ Thumbs.db
 
 # Cline
 .clinerules/
+
+# temp
+tmp_*
+tmp/
+tmp/*

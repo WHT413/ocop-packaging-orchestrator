@@ -1,8 +1,16 @@
-template_id: center_balanced_sides_v1
-family: center_balanced_sides
-regions:
-  title: {panel: center_panel, x: 0.10, y: 0.24, w: 0.80, h: 0.16, rotations: [0]}
-  logos: {panel: center_panel, x: 0.15, y: 0.07, w: 0.70, h: 0.12, rotations: [0]}
-  left_text: {panel: left_panel, x: 0.10, y: 0.20, w: 0.80, h: 0.60, rotations: [0, 90]}
-  right_text: {panel: right_panel, x: 0.10, y: 0.20, w: 0.80, h: 0.42, rotations: [0, 270]}
-  qr: {panel: right_panel, x: 0.25, y: 0.68, w: 0.50, h: 0.14, rotations: [0]}
+config_version: template-registry.v1
+template_id: center_focal_side_cards_v1
+family: center_focal_side_cards
+version: v1
+topology: [background, center_logo, center_title_card, center_subtitle_card, left_info_card, right_trace_card, right_qr_card]
+slot_ownership:
+  title: center_panel
+  supporting_info: center_panel
+  left_text: left_panel
+  right_text: right_panel
+  qr: right_panel
+hierarchy: [ocop_lockup, title, supporting_info, left_text, right_text, qr]
+eligibility:
+  panel_strategy: [center_lockup_balanced_sides]
+  content_density: [balanced, rich]
+  hierarchy_model: [title_first, logo_title_info]

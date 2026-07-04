@@ -48,5 +48,11 @@ def scene_from_manifest(manifest: LayoutManifest, width_mm: float, height_mm: fl
         width_mm=width_mm,
         height_mm=height_mm,
         elements=[SceneElement.model_validate(e.model_dump()) for e in manifest.candidate.elements],
-        metadata={"candidate_id": manifest.candidate.candidate_id, **manifest.metadata},
+        metadata={
+            "candidate_id": manifest.candidate.candidate_id,
+            "artwork_refs": manifest.artwork_refs,
+            "artwork_hashes": manifest.artwork_hashes,
+            "visual_theme": manifest.candidate.metadata.get("visual_theme", {}),
+            **manifest.metadata,
+        },
     )

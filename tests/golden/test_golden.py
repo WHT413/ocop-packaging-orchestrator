@@ -7,4 +7,5 @@ def test_manifest_snapshot_semantic(example_project):
     c = generate_candidates(example_project, d)[0]
     assert c.candidate_id == "C001"
     assert {e.element_id for e in c.elements} >= {"title", "qr", "ocop_lockup"}
-    assert c.elements[4].metadata["star_count"] == 3
+    lockup = next(e for e in c.elements if e.element_id == "ocop_lockup")
+    assert lockup.metadata["star_count"] == 3

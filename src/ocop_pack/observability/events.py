@@ -7,6 +7,17 @@ from typing import Any
 
 
 class EventLog:
+    """
+    Appends workflow events to a per-run JSON Lines log.
+
+    The log records node transitions, status changes, artifact references, and
+    optional error or metadata fields for observability and debugging.
+
+    Args:
+        runs_root: Root directory that contains per-run event log files.
+
+    """
+
     def __init__(self, runs_root: Path = Path("runs")) -> None:
         self.runs_root = runs_root
 

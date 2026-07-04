@@ -9,6 +9,18 @@ from ocop_pack.orchestration.idempotency import file_hash
 
 
 class LocalArtifactStore:
+    """
+    Stores run artifacts on the local filesystem.
+
+    This store groups generated files under a run-specific directory, provides
+    helpers for writing JSON artifacts, copies source files into the run folder,
+    and creates manifest entries with SHA-256 hashes for reproducibility.
+
+    Args:
+        runs_root: Root directory that contains per-run artifact directories.
+
+    """
+
     def __init__(self, runs_root: Path = Path("runs")) -> None:
         self.runs_root = runs_root
 
@@ -27,6 +39,14 @@ class LocalArtifactStore:
             path.write_text(
                 json.dumps(payload, indent=2, sort_keys=True, default=str), encoding="utf-8"
             )
+        return str(path)
+
+    def write_json(self, run_id: str, relative: str, payload: Any) -> str:
+        path = self.path(run_id, relative)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(payload, indent=2, sort_keys=True, default=str), encoding="utf-8"
+        )
         return str(path)
 
     def copy_once(self, run_id: str, source: Path, relative: str) -> str:

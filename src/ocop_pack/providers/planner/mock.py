@@ -9,29 +9,70 @@ from ocop_pack.schemas.design_planner import ArtworkConcept, DesignPlan, LayoutI
 
 class MockPlannerProvider:
     provider = "mock"
-    model = "mock-planner-v1"
+    model = "mock-planner-v2"
 
     def create_design_plan(
         self, request: PlannerRequest, context: ProviderContext
     ) -> PlannerResult:
+        brief = request.planner_input.creative_brief_raw.lower()
+        is_honey = (
+            "honey" in request.planner_input.product_summary.get("category", "").lower()
+            or "mật ong" in brief
+            or "honey" in brief
+        )
+        palette = ["tea green", "warm ivory", "deep leaf"]
+        visual_direction = "clean botanical premium OCOP packaging"
+        motifs = ["regional botanical texture", "craft material grain"]
+        conflicts: list[str] = []
+        if "vàng nâu" in brief or "brown" in brief:
+            palette = ["warm amber", "golden brown", "soft ivory"]
+        if "sang" in brief or "premium" in brief or "tự nhiên" in brief or "natural" in brief:
+            visual_direction = "premium natural packaging with warm craft cues"
+        if is_honey:
+            motifs = ["amber honey glow", "honeycomb geometry", "wildflowers"]
+        if "change star" in brief or "qr" in brief or "claim" in brief:
+            conflicts.append(
+                "Unsupported request attempted to alter protected factual, traceability, "
+                "claim, or certification content."
+            )
+        concept_prompt = ", ".join([*motifs, "decorative artwork layer"])
         plan = DesignPlan(
-            visual_direction="clean botanical premium OCOP packaging",
-            palette=["tea green", "warm ivory", "deep leaf"],
+            visual_direction=visual_direction,
+            palette=palette,
+            decorative_motifs=motifs,
+            artwork_density="balanced",
+            negative_space_intent="balanced",
+            creative_assumptions=[]
+            if request.planner_input.creative_brief_raw
+            else ["No creative brief supplied; using deterministic defaults."],
+            conflicts_or_unsupported_preferences=conflicts,
             artwork_concepts=[
                 ArtworkConcept(
                     concept_id="A01",
-                    description="Soft tea leaves and regional texture as decorative background.",
-                    prompt="decorative botanical tea leaves, watercolor texture, artwork layer",
+                    description="Safe product-inspired decorative background.",
+                    prompt=concept_prompt,
                     negative_prompt="no text, no letters, no logos, no QR codes, no barcodes",
-                    artwork_strategy="full_bleed_continuous",
-                )
+                    artwork_strategy="softened_full_background",
+                ),
+                ArtworkConcept(
+                    concept_id="A02",
+                    description="Alternate safe decorative motif crop.",
+                    prompt=concept_prompt,
+                    negative_prompt="no text, no letters, no logos, no QR codes, no barcodes",
+                    artwork_strategy="panel_local_decorative_strip",
+                ),
             ],
             layout_intents=[
                 LayoutIntent(
                     panel_strategy="center_lockup_balanced_sides",
-                    logo_cluster="top_center",
                     side_text_mode="mixed",
-                    artwork_strategy="full_bleed_continuous",
+                    artwork_strategy="softened_full_background",
+                    panel_roles="center_primary_left_info_right_traceability",
+                    content_hierarchy="title_first",
+                    title_block_intent="hero_label_card",
+                    info_block_intent="side_label_cards",
+                    protected_zone_strategy="guard_all_critical_text",
+                    contrast_strategy="semi_opaque_warm_scrims",
                 )
             ],
             prohibited_content=request.planner_input.prohibited_content,
@@ -47,6 +88,10 @@ class MockPlannerProvider:
             prompt_hash=request.prompt_hash,
             schema_version=plan.schema_version,
             input_hash=request.input_hash,
+            creative_brief_hash=request.creative_brief_hash,
+            system_prompt_hash=request.system_prompt_hash,
+            task_prompt_hash=request.task_prompt_hash,
+            planner_policy_version=request.planner_policy_version,
             raw_response_hash=raw_hash,
         )
         return PlannerResult(design_plan=plan, provenance=prov)

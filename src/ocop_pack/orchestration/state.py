@@ -36,6 +36,8 @@ class PackagingState(TypedDict):
     selected_candidate_id: str | None
     selected_candidate_hash: str | None
     preview_refs: list[str]
+    preview_hashes: dict[str, str]
+    preview_dependency_hashes: dict[str, str]
     final_png_ref: str | None
     final_pdf_ref: str | None
     qa_report_ref: str | None
@@ -44,11 +46,28 @@ class PackagingState(TypedDict):
     image_calls: int
     vision_calls: int
     revision_count: int
+    image_edit_calls: int
     spent_estimate: float
     planner_provider: str | None
     planner_model: str | None
     image_provider: str | None
     image_model: str | None
+    contact_sheet_ref: str | None
+    contact_sheet_hash: str | None
+    contact_sheet_dependency_hash: str | None
+    critic_request_ref: str | None
+    critic_decision_ref: str | None
+    critic_decision_hash: str | None
+    original_selected_candidate_id: str | None
+    revision_request_ref: str | None
+    revised_artwork_ref: str | None
+    revised_artwork_hash: str | None
+    final_render_hash: str | None
+    vision_provider: str | None
+    vision_model: str | None
+    revision_provider: str | None
+    revision_model: str | None
+    waiting_for_human_selection: bool
     provider_attempts: int
     cache_hits: int
     token_usage: dict[str, int]
@@ -74,6 +93,8 @@ def initial_state(run_id: str, project_path: str, thread_id: str | None = None) 
         "selected_candidate_id": None,
         "selected_candidate_hash": None,
         "preview_refs": [],
+        "preview_hashes": {},
+        "preview_dependency_hashes": {},
         "final_png_ref": None,
         "final_pdf_ref": None,
         "qa_report_ref": None,
@@ -82,11 +103,28 @@ def initial_state(run_id: str, project_path: str, thread_id: str | None = None) 
         "image_calls": 0,
         "vision_calls": 0,
         "revision_count": 0,
+        "image_edit_calls": 0,
         "spent_estimate": 0.0,
         "planner_provider": None,
         "planner_model": None,
         "image_provider": None,
         "image_model": None,
+        "contact_sheet_ref": None,
+        "contact_sheet_hash": None,
+        "contact_sheet_dependency_hash": None,
+        "critic_request_ref": None,
+        "critic_decision_ref": None,
+        "critic_decision_hash": None,
+        "original_selected_candidate_id": None,
+        "revision_request_ref": None,
+        "revised_artwork_ref": None,
+        "revised_artwork_hash": None,
+        "final_render_hash": None,
+        "vision_provider": None,
+        "vision_model": None,
+        "revision_provider": None,
+        "revision_model": None,
+        "waiting_for_human_selection": False,
         "provider_attempts": 0,
         "cache_hits": 0,
         "token_usage": {},

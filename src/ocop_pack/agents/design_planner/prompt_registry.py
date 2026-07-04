@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from hashlib import sha256
-from importlib.resources import files
+
+from ocop_pack.agents.design_planner.prompts.v1 import PROMPTS
 
 
 @dataclass(frozen=True)
@@ -14,17 +15,12 @@ class PromptDescriptor:
     content: str
 
 
-def load_prompt(name: str, version: str = "v1") -> PromptDescriptor:
-    file_name = f"{name}.{version}.md"
-    content = (
-        files("ocop_pack.agents.design_planner.prompts")
-        .joinpath(file_name)
-        .read_text(encoding="utf-8")
-    )
+def load_prompt(name: str, version: str = "v2") -> PromptDescriptor:
+    content = PROMPTS[(name, version)]
     return PromptDescriptor(
         prompt_id=f"design_planner.{name}",
         version=version,
-        schema_version="design-plan.v1",
+        schema_version="design-plan.v2",
         sha256=sha256(content.encode("utf-8")).hexdigest(),
         content=content,
     )

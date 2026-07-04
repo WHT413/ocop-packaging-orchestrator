@@ -5,9 +5,9 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 ArtworkStrategy = Literal[
-    "full_bleed_continuous",
-    "center_hero",
-    "split_botanical",
+    "softened_full_background",
+    "framed_hero_region",
+    "panel_local_decorative_strip",
 ]
 
 
@@ -47,25 +47,49 @@ class LayoutIntent(BaseModel):
         "center_lockup_balanced_sides",
         "asymmetric_center_with_qr_side",
     ]
-    logo_cluster: Literal[
-        "top_center",
-        "top_split",
-        "center_header",
-    ]
     side_text_mode: Literal[
         "vertical",
         "horizontal_compact",
         "mixed",
     ]
     artwork_strategy: ArtworkStrategy
+    panel_roles: Literal[
+        "center_primary_sides_secondary",
+        "center_primary_left_info_right_traceability",
+    ]
+    content_hierarchy: Literal[
+        "title_first",
+        "logo_title_info",
+    ]
+    title_block_intent: Literal[
+        "hero_label_card",
+        "stacked_brand_title_card",
+    ]
+    info_block_intent: Literal[
+        "side_label_cards",
+        "compact_traceability_card",
+    ]
+    protected_zone_strategy: Literal[
+        "guard_all_critical_text",
+        "center_safe_title_zone",
+    ]
+    contrast_strategy: Literal[
+        "opaque_light_cards",
+        "semi_opaque_warm_scrims",
+    ]
 
 
 class DesignPlan(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: str = "design-plan.v1"
+    schema_version: Literal["design-plan.v2"] = "design-plan.v2"
     visual_direction: str
     palette: list[str] = Field(min_length=1, max_length=6)
+    decorative_motifs: list[str] = Field(default_factory=list, max_length=8)
+    artwork_density: Literal["minimal", "balanced", "rich"] = "balanced"
+    negative_space_intent: Literal["open", "balanced", "dense"] = "balanced"
+    creative_assumptions: list[str] = Field(default_factory=list, max_length=8)
+    conflicts_or_unsupported_preferences: list[str] = Field(default_factory=list, max_length=8)
     artwork_concepts: list[ArtworkConcept] = Field(min_length=1, max_length=2)
     layout_intents: list[LayoutIntent] = Field(min_length=1, max_length=2)
     prohibited_content: list[str] = Field(default_factory=list)

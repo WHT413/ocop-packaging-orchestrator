@@ -14,6 +14,10 @@ class PlannerRequest(BaseModel):
     prompt_id: str
     prompt_version: str
     prompt_hash: str
+    system_prompt_hash: str = ""
+    task_prompt_hash: str = ""
+    creative_brief_hash: str = ""
+    planner_policy_version: str = "design-planner-policy.v2"
     input_hash: str
     model_config_payload: dict[str, object] = Field(default_factory=dict)
 

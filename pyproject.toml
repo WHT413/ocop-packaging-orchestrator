@@ -28,10 +28,14 @@ ocop-pack = "ocop_pack.cli.app:app"
 requires = ["uv_build>=0.11.6,<0.12.0"]
 build-backend = "uv_build"
 
+[tool.uv.build-backend]
+module-name = "ocop_pack"
+
 [dependency-groups]
 dev = [
     "hypothesis>=6.155.7",
     "mypy>=2.1.0",
+    "pymupdf>=1.27.2.3",
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
     "ruff>=0.15.18",
@@ -56,6 +60,7 @@ testpaths = ["tests"]
 addopts = "--cov=src/ocop_pack --cov-report=term-missing --cov-fail-under=80 --cov-config=pyproject.toml"
 markers = [
     "real_ai: tests that call configured sandbox AI providers and may cost money",
+    "provider_sandbox: opt-in provider sandbox tests that may spend one bounded API call",
 ]
 
 [tool.coverage.run]

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 
@@ -21,6 +22,14 @@ def test_phase2_happy_path(tmp_path: Path) -> None:
     assert state["status"] == RunStatus.EXPORTED
     assert Path(state["final_png_ref"] or "").exists()
     assert Path(state["final_pdf_ref"] or "").exists()
+    qa_report = Path(state["qa_report_ref"] or "")
+    assert qa_report.exists()
+    qa = json.loads(qa_report.read_text(encoding="utf-8"))
+    assert qa["passed"] is True
+    manifest = json.loads((tmp_path / "run_happy" / "run_manifest.json").read_text())
+    exported_state = manifest["state"]
+    assert exported_state["final_png_ref"] == state["final_png_ref"]
+    assert exported_state["final_pdf_ref"] == state["final_pdf_ref"]
 
 
 def test_phase2_rejection_stops_final_render(tmp_path: Path) -> None:

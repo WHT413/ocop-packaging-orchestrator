@@ -1,8 +1,16 @@
-template_id: center_focus_vertical_sides_v1
-family: center_focus_vertical_sides
-regions:
-  title: {panel: center_panel, x: 0.12, y: 0.22, w: 0.76, h: 0.18, rotations: [0]}
-  logos: {panel: center_panel, x: 0.25, y: 0.07, w: 0.50, h: 0.12, rotations: [0]}
-  left_text: {panel: left_panel, x: 0.12, y: 0.18, w: 0.76, h: 0.68, rotations: [90, 270]}
-  right_text: {panel: right_panel, x: 0.12, y: 0.18, w: 0.76, h: 0.44, rotations: [90, 270]}
-  qr: {panel: right_panel, x: 0.25, y: 0.68, w: 0.50, h: 0.14, rotations: [0]}
+config_version: template-registry.v1
+template_id: vertical_side_label_v1
+family: vertical_side_label
+version: v1
+topology: [background, tall_center_title_stack, left_rotated_label, right_rotated_label, bottom_right_qr]
+slot_ownership:
+  title: center_panel
+  supporting_info: center_panel
+  left_text: left_panel
+  right_text: right_panel
+  qr: right_panel
+hierarchy: [title, ocop_lockup, supporting_info, left_text, right_text, qr]
+eligibility:
+  panel_strategy: [center_focus_vertical_sides]
+  content_density: [minimal, balanced]
+  hierarchy_model: [title_first]

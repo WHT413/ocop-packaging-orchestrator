@@ -55,6 +55,15 @@ def test_phase2_cli_happy_path_export() -> None:
     assert "packaging.png" in export_result.output
     assert (run_dir / "final" / "packaging.png").exists()
     assert (run_dir / "final" / "packaging.pdf").exists()
+    qa = json.loads((run_dir / "qa" / "qa_report.json").read_text(encoding="utf-8"))
+    assert qa["passed"] is True
+    manifest = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["state"]["final_png_ref"].endswith(
+        ("final\\packaging.png", "final/packaging.png")
+    )
+    assert manifest["state"]["final_pdf_ref"].endswith(
+        ("final\\packaging.pdf", "final/packaging.pdf")
+    )
 
     approval = json.loads((run_dir / "approval" / "approval.json").read_text(encoding="utf-8"))
     assert approval["candidate_id"] == "C001"

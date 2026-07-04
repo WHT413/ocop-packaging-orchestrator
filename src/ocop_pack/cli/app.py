@@ -14,9 +14,10 @@ from ocop_pack.domain.runs import RunRecord, RunStatus
 from ocop_pack.engine.candidate_generator import generate_candidates
 from ocop_pack.infrastructure.config import (
     DEFAULT_DB_URL,
-    ExecutionSettings,
     ImageSettings,
     PlannerSettings,
+    RevisionSettings,
+    VisionSettings,
 )
 from ocop_pack.infrastructure.persistence.repositories import (
     SqlArtifactRepository,
@@ -61,13 +62,15 @@ def _handle_workflow_error(exc: WorkflowException, verbose: bool = False) -> Non
 def providers_check(
     planner: bool = typer.Option(False, "--planner"),
     image: bool = typer.Option(False, "--image"),
+    vision: bool = typer.Option(False, "--vision"),
+    revision: bool = typer.Option(False, "--revision"),
 ) -> None:
     """Validate provider config without printing secrets.
 
     Offline providers are treated as capability-pass for CI. Sandbox real network
     probes are intentionally performed by the provider adapters during `run`.
     """
-    check_all = not planner and not image
+    check_all = not planner and not image and not vision and not revision
     try:
         if check_all or planner:
             planner_settings = PlannerSettings()
@@ -86,6 +89,24 @@ def providers_check(
                 image_settings.base_url and image_settings.api_key
             ):
                 typer.echo("image config invalid: base_url/api_key required", err=True)
+                raise typer.Exit(10)
+        if check_all or vision:
+            vision_settings = VisionSettings()
+            typer.echo(f"vision provider={vision_settings.provider} model={vision_settings.model}")
+            if vision_settings.provider != "mock" and not (
+                vision_settings.base_url and vision_settings.api_key
+            ):
+                typer.echo("vision config invalid: base_url/api_key required", err=True)
+                raise typer.Exit(10)
+        if check_all or revision:
+            revision_settings = RevisionSettings()
+            typer.echo(
+                f"revision provider={revision_settings.provider} model={revision_settings.model}"
+            )
+            if revision_settings.provider != "fixture" and not (
+                revision_settings.base_url and revision_settings.api_key
+            ):
+                typer.echo("revision config invalid: base_url/api_key required", err=True)
                 raise typer.Exit(10)
     except ValueError as exc:
         typer.echo(f"provider config invalid: {exc}", err=True)
@@ -139,7 +160,7 @@ def generate_candidates_cmd(project_yaml: Path, run_id: str = typer.Option(...))
 def run_workflow(
     project_yaml: Path,
     run_id: str = typer.Option(...),
-    online: bool = typer.Option(ExecutionSettings().online, "--online/--offline"),
+    online: bool = typer.Option(False, "--online/--offline"),
     crash_after: str | None = typer.Option(None),
     verbose: bool = typer.Option(False, "--verbose"),
 ) -> None:
@@ -290,7 +311,7 @@ def reject_cmd(
 @app.command("resume")
 def resume_cmd(
     run_id: str = typer.Option(...),
-    online: bool = typer.Option(ExecutionSettings().online, "--online/--offline"),
+    online: bool = typer.Option(False, "--online/--offline"),
     crash_after: str | None = typer.Option(None),
     verbose: bool = typer.Option(False, "--verbose"),
 ) -> None:
@@ -339,9 +360,26 @@ def inspect(run_id: str, json_output: bool = typer.Option(False, "--json")) -> N
         typer.echo(f"Status: {state['status']}")
         typer.echo(f"Planner: {state['planner_provider']}/{state['planner_model']}")
         typer.echo(f"Image: {state['image_provider']}/{state['image_model']}")
+        typer.echo(f"Vision: {state['vision_provider']}/{state['vision_model']}")
         typer.echo(
             f"Calls: llm={state['llm_calls']} image={state['image_calls']} "
+            f"vision={state['vision_calls']} revision={state['revision_count']} "
             f"cache_hits={state['cache_hits']}"
+        )
+        candidates_path = Path(state["candidate_refs"][0]) if state["candidate_refs"] else None
+        if candidates_path and candidates_path.exists():
+            typer.echo(f"Valid candidates: {len(json.loads(candidates_path.read_text()))}")
+        typer.echo(f"Contact sheet: {state['contact_sheet_ref']}")
+        typer.echo(f"Critic decision: {state['critic_decision_ref']}")
+        typer.echo(f"Selected candidate: {state['selected_candidate_id']}")
+        typer.echo(f"Revision artifact: {state['revised_artwork_ref']}")
+        typer.echo(
+            "Next required action: "
+            + (
+                "human approval"
+                if state["status"] == WorkflowRunStatus.WAITING_APPROVAL
+                else "inspect status"
+            )
         )
         typer.echo(f"Design plan: {state['design_plan_ref']}")
         typer.echo(f"Artwork: {state['artwork_refs']}")
@@ -359,8 +397,39 @@ def inspect(run_id: str, json_output: bool = typer.Option(False, "--json")) -> N
 @app.command("provenance")
 def provenance_cmd(run_id: str) -> None:
     root = Path("runs") / run_id
-    for path in sorted((root / "plan").glob("*provenance.json")) + sorted(
-        (root / "artwork").glob("*.provenance.json")
+    for path in (
+        sorted((root / "plan").glob("*provenance.json"))
+        + sorted((root / "artwork").glob("*.provenance.json"))
+        + sorted((root / "critic").glob("*provenance.json"))
+        + sorted((root / "revision").glob("*provenance.json"))
     ):
         typer.echo(str(path))
         typer.echo(path.read_text(encoding="utf-8"))
+
+
+@app.command("critic-show")
+def critic_show_cmd(run_id: str = typer.Option(...)) -> None:
+    root = Path("runs") / run_id / "critic"
+    for name in ["critic_request.json", "critic_decision.json", "critic_provenance.json"]:
+        path = root / name
+        if path.exists():
+            typer.echo(str(path))
+            typer.echo(path.read_text(encoding="utf-8"))
+
+
+@app.command("revision-show")
+def revision_show_cmd(run_id: str = typer.Option(...)) -> None:
+    root = Path("runs") / run_id / "revision"
+    for path in sorted(root.glob("*")):
+        typer.echo(str(path))
+
+
+@app.command("select")
+def select_cmd(
+    run_id: str = typer.Option(...),
+    candidate: str = typer.Option(...),
+    approved_by: str = typer.Option("cli"),
+) -> None:
+    state = _runner().approve(run_id, candidate, approved_by=approved_by)
+    typer.echo(f"Run: {run_id}")
+    typer.echo(f"Status: {state['status']}")

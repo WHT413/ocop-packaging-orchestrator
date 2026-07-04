@@ -8,11 +8,17 @@ from ocop_pack.orchestration.state import PackagingState
 
 
 def _dump_state(state: PackagingState) -> dict[str, Any]:
-    return {
-        key: value.model_dump(mode="json") if hasattr(value, "model_dump") else value
-        for key, value in state.items()
-        if key != "project"
-    }
+    return {key: _dump_value(value) for key, value in state.items() if key != "project"}
+
+
+def _dump_value(value: Any) -> Any:
+    if hasattr(value, "model_dump"):
+        return value.model_dump(mode="json")
+    if isinstance(value, list):
+        return [_dump_value(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _dump_value(item) for key, item in value.items()}
+    return value
 
 
 class CheckpointStore(Protocol):
@@ -33,6 +39,17 @@ class InMemoryCheckpointStore:
 
 
 class LocalCheckpointStore:
+    """
+    Persists workflow checkpoints on the local filesystem.
+
+    Each checkpoint is stored as a JSON snapshot under the run-specific
+    ``checkpoints/state.json`` path so interrupted workflows can be resumed.
+
+    Args:
+        runs_root: Root directory that contains per-run checkpoint directories.
+
+    """
+
     def __init__(self, runs_root: Path = Path("runs")) -> None:
         self.runs_root = runs_root
 

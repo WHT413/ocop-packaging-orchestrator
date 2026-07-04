@@ -89,6 +89,7 @@ class ProjectSpec(BaseModel):
     origin_text: str
     branding: BrandSpec
     packaging: PackagingSpec
+    creative_brief_raw: str = ""
 
     @field_validator("project_id")
     @classmethod

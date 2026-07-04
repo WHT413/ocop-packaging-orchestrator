@@ -8,7 +8,7 @@ from hashlib import sha256
 from pathlib import Path
 from time import monotonic
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 from ocop_pack.application.ports.artwork_provider import ArtworkRequest, ArtworkResult
 from ocop_pack.infrastructure.config import ImageSettings
@@ -78,10 +78,11 @@ class OpenAICompatibleImageProvider:
         try:
             tmp.write_bytes(base64.b64decode(b64, validate=True))
             with Image.open(tmp) as image:
-                width, height = image.size
-                if width != request.target_width_px or height != request.target_height_px:
-                    raise ProviderSchemaError("image response dimensions do not match request")
-                image.convert("RGB").save(path, format="PNG")
+                original_width, original_height = image.size
+                normalized, normalization_policy = _normalize_image(
+                    image.convert("RGB"), request.target_width_px, request.target_height_px
+                )
+                normalized.save(path, format="PNG")
         except (ValueError, OSError) as exc:
             raise ProviderSchemaError("image response is corrupt") from exc
         tmp.unlink(missing_ok=True)
@@ -103,8 +104,14 @@ class OpenAICompatibleImageProvider:
             width=request.target_width_px,
             height=request.target_height_px,
             format="png",
+            original_width=original_width,
+            original_height=original_height,
+            normalization_policy=normalization_policy,
             latency_ms=int((monotonic() - started) * 1000),
-            warning_codes=["ARTWORK_CONTENT_NOT_VERIFIED"],
+            warning_codes=[
+                "ARTWORK_CONTENT_NOT_VERIFIED",
+                *(["PROVIDER_DIMENSION_NORMALIZED"] if normalization_policy != "none" else []),
+            ],
         )
         return ArtworkResult(
             artifact_ref=str(path),
@@ -119,3 +126,16 @@ class OpenAICompatibleImageProvider:
             latency_ms=provenance.latency_ms,
             provenance=provenance,
         )
+
+
+def _normalize_image(
+    image: Image.Image, target_width: int, target_height: int
+) -> tuple[Image.Image, str]:
+    if image.size == (target_width, target_height):
+        return image, "none"
+    contained = ImageOps.contain(image, (target_width, target_height), Image.Resampling.LANCZOS)
+    canvas = Image.new("RGB", (target_width, target_height), "white")
+    x = (target_width - contained.width) // 2
+    y = (target_height - contained.height) // 2
+    canvas.paste(contained, (x, y))
+    return canvas, "contain_pad_white"

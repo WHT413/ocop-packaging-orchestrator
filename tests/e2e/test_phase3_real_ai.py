@@ -5,7 +5,12 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from ocop_pack.infrastructure.config import ImageSettings, PlannerSettings, RealAITestSettings
+from ocop_pack.infrastructure.config import (
+    ImageSettings,
+    PlannerSettings,
+    RealAITestSettings,
+    VisionSettings,
+)
 from ocop_pack.orchestration.runner import WorkflowRunner
 from ocop_pack.orchestration.status import RunStatus
 
@@ -19,9 +24,11 @@ def _real_ai_enabled() -> bool:
 def _has_online_provider_config() -> bool:
     planner = PlannerSettings()
     image = ImageSettings()
+    vision = VisionSettings()
     planner_ready = planner.provider == "mock" or bool(planner.base_url and planner.api_key)
     image_ready = image.provider == "openai-compatible" and bool(image.base_url and image.api_key)
-    return planner_ready and image_ready
+    vision_ready = vision.provider == "mock" or bool(vision.base_url and vision.api_key)
+    return planner_ready and image_ready and vision_ready
 
 
 pytestmark = pytest.mark.real_ai
@@ -51,7 +58,7 @@ def test_phase3_full_e2e_generates_real_ai_artwork_and_final_packaging(
     if not _real_ai_enabled():
         pytest.skip("set OCOP_E2E_REAL_AI=1 to run real AI provider tests")
     if not _has_online_provider_config():
-        pytest.skip("OCOP_PLANNER_* and OCOP_IMAGE_* online config are required")
+        pytest.skip("OCOP_PLANNER_*, OCOP_IMAGE_*, and OCOP_VISION_* online config are required")
 
     runner = WorkflowRunner(tmp_path, online=True)
     state = runner.start(PROJECT, "phase3_real_ai")

@@ -26,6 +26,11 @@ class ProviderAuthenticationError(ProviderError):
 class ProviderSchemaError(ProviderError):
     code = "PROVIDER_SCHEMA"
 
+    def __init__(self, message: str = "provider schema error", code: str | None = None) -> None:
+        super().__init__(message)
+        if code is not None:
+            self.code = code
+
 
 class ProviderSafetyError(ProviderError):
     code = "PROVIDER_SAFETY"

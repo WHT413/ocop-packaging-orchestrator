@@ -31,4 +31,6 @@ class LayoutManifest(BaseModel):
     project_id: str
     dieline_version: str
     candidate: LayoutCandidate
+    artwork_refs: dict[str, str] = Field(default_factory=dict)
+    artwork_hashes: dict[str, str] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)

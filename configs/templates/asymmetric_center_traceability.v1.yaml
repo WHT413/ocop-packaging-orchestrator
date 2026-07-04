@@ -1,0 +1,16 @@
+config_version: template-registry.v1
+template_id: asymmetric_center_traceability_v1
+family: asymmetric_center_traceability
+version: v1
+topology: [background, offset_center_title, lower_center_info, left_story_card, compact_right_traceability_cluster]
+slot_ownership:
+  title: center_panel
+  supporting_info: center_panel
+  left_text: left_panel
+  right_text: right_panel
+  qr: right_panel
+hierarchy: [ocop_lockup, title, left_text, supporting_info, qr, right_text]
+eligibility:
+  panel_strategy: [asymmetric_center_with_qr_side]
+  content_density: [balanced, rich]
+  hierarchy_model: [logo_title_info, title_first]
