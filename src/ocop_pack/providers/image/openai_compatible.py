@@ -45,10 +45,10 @@ class OpenAICompatibleImageProvider:
             "prompt": request.prompt + "\n" + request.negative_prompt,
             "n": 1,
             "size": f"{request.target_width_px}x{request.target_height_px}",
-            "response_format": "b64_json",
+            "output_format": request.output_format,
         }
         http_request = urllib.request.Request(
-            f"{self.base_url}/images/generations",
+            f"{self.base_url}/images",
             data=json.dumps(payload).encode("utf-8"),
             headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
             method="POST",

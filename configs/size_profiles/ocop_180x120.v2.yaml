@@ -1,0 +1,8 @@
+size_id: OCOP_180X120
+version: full_spread_v2
+width_mm: 180.0
+height_mm: 120.0
+vertical_folds_x_mm: [39.60, 140.40]
+horizontal_folds_y_mm: [6.00, 114.00]
+fold_exclusion_mm: 2.0
+glue_flap: null

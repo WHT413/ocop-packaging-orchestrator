@@ -73,6 +73,8 @@ class BrandSpec(BaseModel):
 class PackagingSpec(BaseModel):
     size_id: str
     qr_payload: str = "https://ocop.example.local/product"
+    show_qr: bool = False
+    show_barcode: bool = False
 
     @field_validator("size_id")
     @classmethod

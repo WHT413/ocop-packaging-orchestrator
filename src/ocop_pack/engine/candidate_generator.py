@@ -4,10 +4,16 @@ from ocop_pack.domain.dieline import DielineSpec
 from ocop_pack.domain.geometry import BoundingBox
 from ocop_pack.domain.layout import LayoutCandidate, LayoutElement
 from ocop_pack.domain.project import ProjectSpec
+from ocop_pack.engine.barcode import ean13_modules
 from ocop_pack.engine.ocop_lockup import compose_ocop_lockup
 from ocop_pack.engine.qr import QR_POLICY_VERSION, payload_hash, qr_render_metadata
 from ocop_pack.engine.template_registry import TemplateFamily, TemplateRegistry
-from ocop_pack.engine.visual_theme import artwork_opacity, resolve_visual_theme, theme_tokens
+from ocop_pack.engine.visual_theme import (
+    VisualTheme,
+    artwork_opacity,
+    resolve_visual_theme,
+    theme_tokens,
+)
 from ocop_pack.schemas.design_planner import DesignPlan, LayoutIntent
 
 
@@ -32,8 +38,16 @@ def _square_region(panel: BoundingBox, x: float, y: float, w: float, h: float) -
 
 
 def _card(
-    element_id: str, bbox: BoundingBox, z_index: int, fill: str, opacity: float
+    element_id: str,
+    bbox: BoundingBox,
+    z_index: int,
+    fill: str,
+    opacity: float,
+    radius_mm: float = 3,
+    frame_style: str = "paper_label",
+    badge_motif: str | None = None,
 ) -> LayoutElement:
+    shape_style = _element_frame_style(element_id, frame_style)
     return LayoutElement(
         element_id=element_id,
         kind="shape",
@@ -45,9 +59,217 @@ def _card(
             "opacity": opacity,
             "border_color": fill,
             "role": "readability_guard",
-            "corner_radius_mm": 3,
+            "corner_radius_mm": radius_mm,
+            "frame_style": shape_style,
+            "badge_motif": badge_motif or "",
         },
     )
+
+
+def _with_border(card: LayoutElement, color: str, width_mm: float) -> LayoutElement:
+    return card.model_copy(
+        update={
+            "metadata": {
+                **card.metadata,
+                "border_color": color,
+                "border_width_mm": width_mm,
+            }
+        }
+    )
+
+
+def _element_frame_style(element_id: str, frame_style: str) -> str:
+    if frame_style != "natural_reference_mix":
+        return frame_style
+    if element_id == "left_text_card":
+        return "leaf_badge"
+    if element_id == "right_text_card":
+        return "woven_label"
+    if element_id in {"details_text_card", "nutrition_text_card"}:
+        return "torn_paper"
+    if element_id == "supporting_info_card":
+        return "vellum_overlay"
+    if element_id == "title_card":
+        return "soft_scrim"
+    return "paper_label"
+
+
+def _net_content_badge_motif(project: ProjectSpec) -> str:
+    text = f"{project.product.name} {project.product.category}".lower()
+    if any(token in text for token in ["ca phe", "coffee", "cafe"]):
+        return "coffee_bean"
+    if any(token in text for token in ["sen", "lotus"]):
+        return "lotus_seed"
+    if any(token in text for token in ["mat ong", "honey"]):
+        return "honey_drop"
+    if any(token in text for token in ["chuoi", "banana"]):
+        return "banana_slice"
+    if any(token in text for token in ["dau tam", "berry", "mut"]):
+        return "berry"
+    return "leaf"
+
+
+def _choose(value: str, allowed: tuple[str, ...], seed: int, idx: int) -> str:
+    if value != "theme_default":
+        return value
+    return allowed[(seed + idx - 1) % len(allowed)]
+
+
+def _style_controls(
+    intent: LayoutIntent, seed: int, idx: int, fill: str, secondary_fill: str, opacity: float
+) -> dict[str, object]:
+    frame_style = _choose(
+        intent.frame_style,
+        (
+            "paper_label",
+            "soft_scrim",
+            "kraft_card",
+            "premium_badge",
+            "torn_paper",
+            "leaf_badge",
+            "woven_label",
+            "vellum_overlay",
+            "brush_stroke",
+            "natural_reference_mix",
+        ),
+        seed,
+        idx,
+    )
+    font_mood = _choose(
+        intent.font_mood,
+        ("refined_natural", "artisanal_bold", "functional_safe"),
+        seed // 3,
+        idx,
+    )
+    contrast_style = _choose(
+        intent.contrast_style,
+        ("balanced_scrim", "light_scrim", "opaque_card"),
+        seed // 7,
+        idx,
+    )
+    frame = {
+        "paper_label": (fill, 3.0),
+        "soft_scrim": (secondary_fill, 5.0),
+        "kraft_card": (secondary_fill, 2.0),
+        "premium_badge": (fill, 6.0),
+        "torn_paper": (fill, 1.0),
+        "leaf_badge": (secondary_fill, 8.0),
+        "woven_label": (fill, 1.5),
+        "vellum_overlay": (fill, 4.0),
+        "brush_stroke": (secondary_fill, 6.0),
+        "natural_reference_mix": (fill, 3.0),
+    }[frame_style]
+    contrast = {
+        "light_scrim": max(0.18, opacity - 0.42),
+        "balanced_scrim": max(0.36, opacity - 0.22),
+        "opaque_card": max(0.86, opacity),
+    }[contrast_style]
+    return {
+        "frame_style": frame_style,
+        "font_mood": font_mood,
+        "contrast_style": contrast_style,
+        "fill": frame[0],
+        "opacity": contrast,
+        "radius_mm": frame[1],
+    }
+
+
+def _retail_surface(
+    project: ProjectSpec, intent: LayoutIntent, theme: VisualTheme
+) -> dict[str, object]:
+    safe_styles = {"paper_label", "soft_scrim", "kraft_card", "vellum_overlay"}
+    if intent.frame_style in safe_styles:
+        frame_style = intent.frame_style
+    else:
+        text = " ".join(
+            [project.product.name, project.product.category, project.creative_brief_raw]
+        ).lower()
+        if any(token in text for token in ["ca phe", "coffee", "cafe"]):
+            frame_style = "kraft_card"
+        elif any(token in text for token in ["tra", "tea", "matcha", "botanical"]):
+            frame_style = "vellum_overlay"
+        elif any(token in text for token in ["mat ong", "honey"]):
+            frame_style = "soft_scrim"
+        else:
+            frame_style = "paper_label"
+    look = {
+        "kraft_card": (theme.card_secondary_fill, 0.48, 2.0),
+        "vellum_overlay": (theme.card_fill, 0.40, 3.0),
+        "soft_scrim": (theme.card_fill, 0.36, 3.5),
+        "paper_label": (theme.card_fill, 0.46, 2.2),
+    }[frame_style]
+    return {"frame_style": frame_style, "fill": look[0], "opacity": look[1], "radius_mm": look[2]}
+
+
+def _barcode_bars(seed: str, bbox: BoundingBox, fill: str) -> list[LayoutElement]:
+    bars: list[LayoutElement] = []
+    modules = ean13_modules(seed)
+    module_w = bbox.width_mm / len(modules)
+    for idx, bit in enumerate(modules):
+        if bit != "1":
+            continue
+        bars.append(
+            LayoutElement(
+                element_id=f"barcode_bar_{idx:02d}",
+                kind="shape",
+                source_ref="packaging.barcode",
+                bbox_mm=BoundingBox(
+                    x_mm=bbox.x_mm + idx * module_w,
+                    y_mm=bbox.y_mm,
+                    width_mm=module_w * 0.96,
+                    height_mm=bbox.height_mm,
+                ),
+                z_index=31,
+                metadata={
+                    "fill": fill,
+                    "opacity": 1.0,
+                    "border_color": fill,
+                    "role": "barcode_bar",
+                    "corner_radius_mm": 0,
+                },
+            )
+        )
+    return bars
+
+
+def _traceability_elements(
+    project: ProjectSpec, qr_box: BoundingBox, barcode_box: BoundingBox
+) -> list[LayoutElement]:
+    elements: list[LayoutElement] = []
+    if project.packaging.show_qr:
+        elements.extend(
+            [
+                _card("qr_card", qr_box, 20, "#ffffff", 1.0),
+                LayoutElement(
+                    element_id="qr",
+                    kind="qr",
+                    source_ref="packaging.qr_payload",
+                    bbox_mm=qr_box,
+                    critical=True,
+                    z_index=30,
+                    metadata={
+                        "payload_hash": payload_hash(project.packaging.qr_payload),
+                        "quiet_zone": 4,
+                        "qr_policy_version": QR_POLICY_VERSION,
+                        **qr_render_metadata(project.packaging.qr_payload, qr_box),
+                        "role": "traceability",
+                        "panel_role": "right_traceability",
+                        "guard_id": "qr_card",
+                        "padding_mm": 3,
+                    },
+                ),
+            ]
+        )
+    if project.packaging.show_barcode:
+        bars_box = BoundingBox(
+            x_mm=barcode_box.x_mm + barcode_box.width_mm * 0.06,
+            y_mm=barcode_box.y_mm + barcode_box.height_mm * 0.08,
+            width_mm=barcode_box.width_mm * 0.88,
+            height_mm=barcode_box.height_mm * 0.84,
+        )
+        elements.append(_card("barcode_card", barcode_box, 20, "#ffffff", 1.0, 1.2))
+        elements.extend(_barcode_bars(project.project_id, bars_box, "#111111"))
+    return elements
 
 
 def _text(
@@ -173,31 +395,70 @@ def _build_candidate(
         if intent.contrast_strategy == "opaque_light_cards"
         else theme.card_opacity
     )
-    if family.family == "vertical_side_label":
-        title_box = _region(center, 0.08, 0.18, 0.84, 0.24)
-        logo_box = _region(center, 0.30, 0.08, 0.40, 0.08)
-        info_box = _region(center, 0.18, 0.48, 0.64, 0.12)
-        left_box = _region(left, 0.22, 0.16, 0.56, 0.70)
-        right_box = _region(right, 0.10, 0.12, 0.80, 0.48)
-        qr_box = _square_region(right, 0.26, 0.66, 0.48, 0.18)
-        side_rotation, right_rotation = 90, 270
+    style = _style_controls(intent, seed, idx, fill, theme.card_secondary_fill, opacity)
+    fill = str(style["fill"])
+    opacity = float(style["opacity"])
+    radius_mm = float(style["radius_mm"])
+    if family.family == "retail_label_reference":
+        title_box = _region(center, 0.05, 0.16, 0.90, 0.20)
+        logo_box = _region(center, 0.33, 0.075, 0.34, 0.08)
+        info_box = _region(center, 0.24, 0.41, 0.52, 0.09)
+        left_box = _region(left, 0.18, 0.805, 0.60, 0.072)
+        right_box = _region(right, 0.09, 0.19, 0.82, 0.145)
+        qr_box = _square_region(right, 0.22, 0.595, 0.56, 0.16)
+        side_rotation, right_rotation = 0, 0
+    elif family.family == "vertical_side_label":
+        title_box = _region(center, 0.08, 0.17, 0.84, 0.23)
+        logo_box = _region(center, 0.31, 0.06, 0.38, 0.10)
+        info_box = _region(center, 0.21, 0.44, 0.58, 0.12)
+        left_box = _region(left, 0.10, 0.18, 0.80, 0.14)
+        right_box = _region(right, 0.08, 0.17, 0.84, 0.23)
+        qr_box = _square_region(right, 0.20, 0.56, 0.60, 0.17)
+        side_rotation, right_rotation = 0, 0
     elif family.family == "asymmetric_center_traceability":
-        title_box = _region(center, 0.08, 0.18, 0.70, 0.20)
-        logo_box = _region(center, 0.54, 0.08, 0.34, 0.09)
-        info_box = _region(center, 0.22, 0.50, 0.58, 0.12)
-        left_box = _region(left, 0.10, 0.30, 0.78, 0.40)
-        right_box = _region(right, 0.10, 0.14, 0.80, 0.32)
-        qr_box = _square_region(right, 0.18, 0.43, 0.42, 0.18)
+        title_box = _region(center, 0.07, 0.18, 0.80, 0.22)
+        logo_box = _region(center, 0.51, 0.06, 0.38, 0.10)
+        info_box = _region(center, 0.20, 0.44, 0.58, 0.12)
+        left_box = _region(left, 0.10, 0.18, 0.80, 0.14)
+        right_box = _region(right, 0.08, 0.18, 0.84, 0.23)
+        qr_box = _square_region(right, 0.20, 0.57, 0.60, 0.17)
         side_rotation, right_rotation = 0, 0
     else:
-        title_box = _region(center, 0.10, 0.23, 0.80, 0.18)
-        logo_box = _region(center, 0.25, 0.08, 0.50, 0.10)
-        info_box = _region(center, 0.18, 0.45, 0.64, 0.10)
-        left_box = _region(left, 0.13, 0.22, 0.74, 0.48)
-        right_box = _region(right, 0.13, 0.20, 0.74, 0.34)
-        qr_box = _square_region(right, 0.18, 0.59, 0.64, 0.23)
-        side_rotation = 90 if intent.side_text_mode in {"vertical", "mixed"} else 0
-        right_rotation = side_rotation if side_rotation else 270
+        title_box = _region(center, 0.08, 0.18, 0.84, 0.22)
+        logo_box = _region(center, 0.31, 0.06, 0.38, 0.10)
+        info_box = _region(center, 0.21, 0.44, 0.58, 0.12)
+        left_box = _region(left, 0.10, 0.18, 0.80, 0.14)
+        right_box = _region(right, 0.08, 0.18, 0.84, 0.23)
+        qr_box = _square_region(right, 0.20, 0.57, 0.60, 0.17)
+        side_rotation, right_rotation = 0, 0
+    if family.family == "retail_label_reference":
+        info_panel_box = _region(center, 0.06, 0.57, 0.88, 0.23)
+        details_box = _region(center, 0.10, 0.60, 0.43, 0.17)
+        nutrition_box = _region(center, 0.532, 0.60, 0.43, 0.17)
+        barcode_box = _region(right, 0.24, 0.735, 0.52, 0.10)
+    else:
+        info_panel_box = _region(center, 0.06, 0.61, 0.88, 0.24)
+        details_box = _region(center, 0.09, 0.64, 0.39, 0.17)
+        nutrition_box = _region(center, 0.54, 0.64, 0.35, 0.17)
+        barcode_box = _region(right, 0.22, 0.745, 0.56, 0.10)
+    is_retail_reference = family.family == "retail_label_reference"
+    title_card_opacity = 0.06 if is_retail_reference else opacity
+    supporting_card_opacity = 0.34 if is_retail_reference else opacity
+    side_card_opacity = 0.42 if is_retail_reference else opacity
+    info_card_opacity = 0.50 if is_retail_reference else opacity
+    retail_surface = _retail_surface(project, intent, theme)
+    retail_card_fill = str(retail_surface["fill"]) if is_retail_reference else fill
+    retail_card_radius = float(retail_surface["radius_mm"]) if is_retail_reference else radius_mm
+    retail_card_frame = (
+        str(retail_surface["frame_style"]) if is_retail_reference else str(style["frame_style"])
+    )
+    if is_retail_reference:
+        supporting_card_opacity = float(retail_surface["opacity"]) * 0.8
+        side_card_opacity = float(retail_surface["opacity"]) * 0.95
+        info_card_opacity = float(retail_surface["opacity"])
+    footer_fill = theme.accent_color
+    footer_opacity = 0.82 if is_retail_reference else 0.75
+    footer_text_color = "#fff5c8" if is_retail_reference else theme.primary_text_color
     lockup = compose_ocop_lockup(
         "branding.ocop.logo_path", project.branding.ocop.star_count, logo_box
     )
@@ -222,7 +483,54 @@ def _build_candidate(
                 "visual_theme_token": "background_color",
             },
         ),
-        _card("title_card", title_box, 20, fill, opacity),
+        LayoutElement(
+            element_id="footer_text_card",
+            kind="shape",
+            source_ref="system.readability_guard",
+            bbox_mm=BoundingBox(
+                x_mm=0,
+                y_mm=dieline.height_mm * 0.895,
+                width_mm=dieline.width_mm,
+                height_mm=dieline.height_mm * 0.07,
+            ),
+            z_index=12,
+            metadata={
+                "fill": footer_fill,
+                "opacity": footer_opacity,
+                "border_color": footer_fill,
+                "role": "decorative_footer",
+                "corner_radius_mm": 0,
+            },
+        ),
+        LayoutElement(
+            element_id="footer_text",
+            kind="text",
+            source_ref="origin_text",
+            bbox_mm=BoundingBox(
+                x_mm=0,
+                y_mm=dieline.height_mm * 0.895,
+                width_mm=dieline.width_mm,
+                height_mm=dieline.height_mm * 0.07,
+            ),
+            z_index=30,
+            metadata={
+                "role": "footer",
+                "panel_role": "decorative_footer",
+                "align": "center",
+                "text_color": footer_text_color,
+                "font_asset_id": theme.body_font_asset_id,
+                "padding_mm": 2,
+            },
+        ),
+        _card(
+            "title_card",
+            title_box,
+            20,
+            fill,
+            title_card_opacity,
+            radius_mm,
+            str(style["frame_style"]),
+        ),
         _text(
             "title",
             "product.name",
@@ -236,7 +544,15 @@ def _build_candidate(
             font_asset_id=theme.title_font_asset_id,
         ),
         lockup,
-        _card("supporting_info_card", info_box, 20, fill, opacity),
+        _card(
+            "supporting_info_card",
+            info_box,
+            20,
+            retail_card_fill,
+            supporting_card_opacity,
+            retail_card_radius,
+            retail_card_frame,
+        ),
         _text(
             "supporting_info",
             "product.category",
@@ -249,53 +565,93 @@ def _build_candidate(
             text_color=theme.secondary_text_color,
             font_asset_id=theme.subtitle_font_asset_id,
         ),
-        _card("left_text_card", left_box, 20, fill, opacity),
+        _card(
+            "left_text_card",
+            left_box,
+            20,
+            retail_card_fill,
+            0.34 if is_retail_reference else side_card_opacity,
+            2.2,
+            "paper_label",
+        ),
         _text(
             "left_text",
-            "product.ingredients",
+            "product.net_content",
             left_box,
             30,
-            "secondary_info",
+            "short_claim",
             "left_secondary",
-            3.0,
-            "left",
+            3.8,
+            "center",
             side_rotation,
             text_color=theme.secondary_text_color,
-            font_asset_id=theme.body_font_asset_id,
+            font_asset_id=theme.subtitle_font_asset_id,
         ),
-        _card("right_text_card", right_box, 20, fill, opacity),
+        _card(
+            "right_text_card",
+            right_box,
+            20,
+            retail_card_fill,
+            side_card_opacity,
+            retail_card_radius,
+            retail_card_frame,
+        ),
         _text(
             "right_text",
-            "producer",
+            "producer.short",
             right_box,
             30,
-            "producer_traceability",
+            "traceability",
             "right_traceability",
             3.0,
-            "left",
+            "center",
             right_rotation,
             text_color=theme.secondary_text_color,
             font_asset_id=theme.body_font_asset_id,
         ),
-        _card("qr_card", qr_box, 20, "#ffffff", 1.0),
-        LayoutElement(
-            element_id="qr",
-            kind="qr",
-            source_ref="packaging.qr_payload",
-            bbox_mm=qr_box,
-            critical=True,
-            z_index=30,
-            metadata={
-                "payload_hash": payload_hash(project.packaging.qr_payload),
-                "quiet_zone": 4,
-                "qr_policy_version": QR_POLICY_VERSION,
-                **qr_render_metadata(project.packaging.qr_payload, qr_box),
-                "role": "traceability",
-                "panel_role": "right_traceability",
-                "guard_id": "qr_card",
-                "padding_mm": 3,
-            },
+        _card(
+            "details_text_card",
+            info_panel_box,
+            20,
+            retail_card_fill,
+            info_card_opacity,
+            retail_card_radius,
+            retail_card_frame,
         ),
+        _text(
+            "details_text",
+            "product.details",
+            details_box,
+            30,
+            "dense_info",
+            "center_primary",
+            2.0,
+            "left",
+            text_color=theme.secondary_text_color,
+            font_asset_id=theme.body_font_asset_id,
+        ),
+        _card(
+            "nutrition_text_card",
+            info_panel_box,
+            20,
+            retail_card_fill,
+            info_card_opacity,
+            retail_card_radius,
+            retail_card_frame,
+        ),
+        _text(
+            "nutrition_text",
+            "product.nutrition",
+            nutrition_box,
+            30,
+            "dense_info",
+            "center_primary",
+            2.0,
+            "left",
+            text_color=theme.secondary_text_color,
+            font_asset_id=theme.body_font_asset_id,
+        ),
+        *_traceability_elements(project, qr_box, barcode_box),
     ]
     topology_signature = [
         (
@@ -324,6 +680,10 @@ def _build_candidate(
             "info_block_intent": intent.info_block_intent,
             "protected_zone_strategy": intent.protected_zone_strategy,
             "contrast_strategy": intent.contrast_strategy,
+            "frame_style": style["frame_style"],
+            "font_mood": style["font_mood"],
+            "contrast_style": style["contrast_style"],
+            "retail_surface": retail_surface,
             "artwork_mode": intent.artwork_strategy,
             "template_family": family.family,
             "template_config_version": family.version,

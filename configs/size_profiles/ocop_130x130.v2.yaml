@@ -1,0 +1,8 @@
+size_id: OCOP_130X130
+version: full_spread_v2
+width_mm: 130.0
+height_mm: 130.0
+vertical_folds_x_mm: [28.60, 101.40]
+horizontal_folds_y_mm: [6.50, 123.50]
+fold_exclusion_mm: 2.0
+glue_flap: null

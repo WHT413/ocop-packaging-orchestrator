@@ -3,15 +3,15 @@ product:
   name: "Tra thao moc OCOP"
   category: "Tra"
   net_content: "100 g"
-  ingredients: "Tra xanh, hoa nhai, co ngot, thao moc tu nhien. Huong vi diu nhe, phu hop su dung hang ngay."
-  usage_instructions: "Ham 3-5 g voi nuoc nong 90 do C trong 5 phut."
-  storage_instructions: "Bao quan noi kho rao, thoang mat, tranh anh nang truc tiep."
+  ingredients: "Tra xanh sao nhe, hoa nhai, co ngot, la dua va thao moc tu nhien tu vung nui. Khong su dung mau tong hop."
+  usage_instructions: "Dung 3-5 g tra cho 200 ml nuoc nong 90 do C, ham 5 phut. Co the pha lai 2 lan."
+  storage_instructions: "Dong kin sau khi mo. Bao quan noi kho rao, thoang mat, tranh anh nang truc tiep va mui la."
   expiry_or_shelf_life: "12 thang ke tu ngay san xuat"
 producer:
   manufacturer_name: "Hop tac xa Tra Nui Xanh"
   manufacturer_address: "Xa Minh Thanh, Viet Nam"
   contact_phone: "0900000000"
-origin_text: "San pham cua dia phuong, dong goi tai Viet Nam"
+origin_text: "San pham cua HTX Tra Nui Xanh, so che va dong goi tai Viet Nam"
 branding:
   logos:
     - asset_id: brand
@@ -24,3 +24,6 @@ branding:
 packaging:
   size_id: OCOP_130X150
   qr_payload: "https://example.com/ocop/tea_basic"
+  show_qr: true
+  show_barcode: true
+creative_brief_raw: "Nguoi dung muon bao bi tra thao moc OCOP cam giac sach, moc mac va cao cap. Nen co nen la tra watercolor, hoi nuoc mong, tone xanh la - vang kem, title lon de doc tren ke hang, OCOP 3 sao ro hon. Bo cuc giong nhan that: mat truoc co ten san pham, khoi khoi luong, QR, thong tin nha san xuat, thanh phan, huong dan, bang dinh duong va barcode. Khong dung mau neon, khong lam qua sang trang, giu artwork nen ro chi tiet."

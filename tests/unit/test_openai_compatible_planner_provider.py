@@ -141,6 +141,41 @@ def test_openai_planner_schema_error_reports_validation_location(
     assert "raw_response_hash=" in message
 
 
+def test_openai_planner_diagnostic_serializes_validation_context(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, example_project
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("OCOP_PLANNER_PROVIDER", "openai-compatible")
+    monkeypatch.setenv("OCOP_PLANNER_MODEL", "cx/gpt-5.5")
+    monkeypatch.setenv("OCOP_PLANNER_BASE_URL", "https://planner.invalid/v1")
+    monkeypatch.setenv("OCOP_PLANNER_API_KEY", "test-key")
+    monkeypatch.setenv("OCOP_IMAGE_PROVIDER", "fixture")
+    monkeypatch.setenv("OCOP_VISION_PROVIDER", "mock")
+    monkeypatch.setenv("OCOP_REVISION_PROVIDER", "fixture")
+    plan = _valid_plan_payload()
+    plan["artwork_concepts"][0]["negative_prompt"] = (
+        "no letters, no numbers, no marks, no position, no logo scale"
+    )
+    provider_payload = {
+        "id": "chatcmpl-test",
+        "choices": [{"message": {"content": json.dumps(plan)}}],
+    }
+    monkeypatch.setattr(
+        "ocop_pack.providers.planner.openai_compatible.urllib.request.urlopen",
+        lambda *_args, **_kwargs: _FakeResponse(provider_payload),
+    )
+
+    with pytest.raises(ProviderSchemaError, match="negative_prompt"):
+        OpenAICompatiblePlannerProvider().create_design_plan(
+            _planner_request(example_project),
+            ProviderContext(run_id="bad_negative_prompt", thread_id="run", node="plan_design"),
+        )
+
+    diagnostic = tmp_path / "data/runs_acceptance/planner_diagnostics/bad_negative_prompt.json"
+    assert diagnostic.exists()
+    assert "no logo scale" in diagnostic.read_text(encoding="utf-8")
+
+
 def test_openai_planner_accepts_markdown_wrapped_json(
     monkeypatch: pytest.MonkeyPatch, example_project
 ) -> None:
@@ -166,6 +201,33 @@ def test_openai_planner_accepts_markdown_wrapped_json(
 
     assert result.design_plan.schema_version == "design-plan.v2"
     assert "honeycomb geometry" in result.design_plan.decorative_motifs
+
+
+def test_openai_planner_defaults_missing_artwork_strategy(
+    monkeypatch: pytest.MonkeyPatch, example_project
+) -> None:
+    monkeypatch.setenv("OCOP_PLANNER_PROVIDER", "openai-compatible")
+    monkeypatch.setenv("OCOP_PLANNER_MODEL", "cx/gpt-5.5")
+    monkeypatch.setenv("OCOP_PLANNER_BASE_URL", "https://planner.invalid/v1")
+    monkeypatch.setenv("OCOP_PLANNER_API_KEY", "test-key")
+    monkeypatch.setenv("OCOP_IMAGE_PROVIDER", "fixture")
+    plan = _valid_plan_payload()
+    plan["artwork_concepts"][0].pop("artwork_strategy")
+    provider_payload = {
+        "id": "chatcmpl-test",
+        "choices": [{"message": {"content": json.dumps(plan)}}],
+    }
+    monkeypatch.setattr(
+        "ocop_pack.providers.planner.openai_compatible.urllib.request.urlopen",
+        lambda *_args, **_kwargs: _FakeResponse(provider_payload),
+    )
+
+    result = OpenAICompatiblePlannerProvider().create_design_plan(
+        _planner_request(example_project),
+        ProviderContext(run_id="run", thread_id="run", node="plan_design"),
+    )
+
+    assert result.design_plan.artwork_concepts[0].artwork_strategy == "softened_full_background"
 
 
 def test_openai_planner_rejects_trailing_prose(
@@ -252,6 +314,9 @@ def test_workflow_records_planner_schema_failure_details(
     monkeypatch.setenv("OCOP_PLANNER_MODEL", "cx/gpt-5.5")
     monkeypatch.setenv("OCOP_PLANNER_BASE_URL", "https://planner.invalid/v1")
     monkeypatch.setenv("OCOP_PLANNER_API_KEY", "test-key")
+    monkeypatch.setenv("OCOP_IMAGE_PROVIDER", "fixture")
+    monkeypatch.setenv("OCOP_VISION_PROVIDER", "mock")
+    monkeypatch.setenv("OCOP_REVISION_PROVIDER", "fixture")
 
     provider_payload = {
         "id": "chatcmpl-test",
@@ -282,7 +347,7 @@ def test_workflow_records_planner_schema_failure_details(
         Path("examples/projects/tea_basic/project.yaml"), "run"
     )
 
-    assert state["status"] == RunStatus.PLANNING_FAILED
+    assert state["status"] == RunStatus.WAITING_APPROVAL
     assert state["errors"]
-    assert state["errors"][-1].code == "PROVIDER_SCHEMA"
-    assert "artwork_concepts" in state["errors"][-1].message
+    assert state["errors"][0].code == "PROVIDER_SCHEMA"
+    assert "fell back to mock planner" in state["errors"][0].message

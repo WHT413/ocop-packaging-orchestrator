@@ -1,0 +1,8 @@
+size_id: OCOP_260X160
+version: full_spread_v2
+width_mm: 260.0
+height_mm: 160.0
+vertical_folds_x_mm: [57.20, 202.80]
+horizontal_folds_y_mm: [8.00, 152.00]
+fold_exclusion_mm: 2.0
+glue_flap: null

@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import json
+import shutil
+import time
 from pathlib import Path
-from typing import Literal, cast
+from typing import Annotated, Literal, cast
 
 import typer
 from sqlalchemy.orm import Session
 
 from ocop_pack.domain.artifacts import ArtifactMetadata
 from ocop_pack.domain.dieline import load_dieline
-from ocop_pack.domain.layout import LayoutManifest
+from ocop_pack.domain.layout import LayoutCandidate, LayoutManifest
 from ocop_pack.domain.runs import RunRecord, RunStatus
 from ocop_pack.engine.candidate_generator import generate_candidates
 from ocop_pack.infrastructure.config import (
@@ -36,11 +38,39 @@ from ocop_pack.orchestration.runner import WorkflowRunner
 from ocop_pack.orchestration.status import RunStatus as WorkflowRunStatus
 from ocop_pack.services.qa_service import qa_candidate
 from ocop_pack.services.render_service import render_manifest
+from ocop_pack.services.svg_service import render_svg_manifest
 from ocop_pack.services.validation_service import file_sha256, load_project, project_hash
 
 app = typer.Typer()
 providers_app = typer.Typer(help="Provider capability checks")
 app.add_typer(providers_app, name="providers")
+
+DEFAULT_RUNS_ROOT = Path("runs")
+RUN_CLEANUP_DIRS = (
+    "artwork",
+    "candidates",
+    "checkpoints",
+    "critic",
+    "geometry",
+    "input",
+    "internal",
+    "plan",
+    "previews",
+    "revision",
+)
+DEV_CACHE_PATHS = (
+    Path(".coverage"),
+    Path(".pytest_cache"),
+    Path(".hypothesis"),
+    Path("data/runs_acceptance"),
+)
+REQUIRED_FINAL_FILES = (
+    "packaging.png",
+    "packaging.pdf",
+    "packaging.svg",
+    "editable_layout.json",
+    "print_spec.json",
+)
 
 
 def _runner() -> WorkflowRunner:
@@ -56,6 +86,62 @@ def _handle_workflow_error(exc: WorkflowException, verbose: bool = False) -> Non
         raise exc
     typer.echo(f"Error [{exc.error.code}]: {exc.error.message}", err=True)
     raise typer.Exit(2) from exc
+
+
+def _manifest_status(run_dir: Path) -> str | None:
+    manifest = run_dir / "run_manifest.json"
+    if not manifest.exists():
+        return None
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    state = data.get("state", {})
+    return str(state.get("status")) if isinstance(state, dict) else None
+
+
+def _cleanup_run_dir(
+    run_dir: Path, cutoff: float | None = None, all_runs: bool = False, delete: bool = False
+) -> list[Path]:
+    if cutoff is not None and run_dir.stat().st_mtime > cutoff:
+        return []
+    if not all_runs and _manifest_status(run_dir) != WorkflowRunStatus.EXPORTED:
+        return []
+    targets = [run_dir / name for name in RUN_CLEANUP_DIRS if (run_dir / name).exists()]
+    if delete:
+        for target in targets:
+            shutil.rmtree(target)
+    return targets
+
+
+def _audit_run_dir(run_dir: Path) -> dict[str, object]:
+    manifest = run_dir / "run_manifest.json"
+    issues: list[str] = []
+    status = _manifest_status(run_dir) or "UNKNOWN"
+    final_dir = run_dir / "final"
+    missing_final = [
+        name for name in REQUIRED_FINAL_FILES if not (final_dir / name).exists()
+    ]
+    if status == WorkflowRunStatus.EXPORTED and missing_final:
+        issues.append("EXPORTED_RUN_MISSING_FINAL_FILES")
+    packaging_manifest = final_dir / "packaging.manifest.json"
+    if packaging_manifest.exists():
+        data = json.loads(packaging_manifest.read_text(encoding="utf-8"))
+        for name, key in [
+            ("packaging.png", "png_hash"),
+            ("packaging.pdf", "pdf_hash"),
+            ("packaging.svg", "svg_hash"),
+        ]:
+            path = final_dir / name
+            if path.exists() and data.get(key) and data[key] != file_sha256(path):
+                issues.append(f"HASH_MISMATCH:{name}")
+    elif status == WorkflowRunStatus.EXPORTED:
+        issues.append("EXPORTED_RUN_MISSING_PACKAGING_MANIFEST")
+    return {
+        "run_id": run_dir.name,
+        "status": status,
+        "manifest_exists": manifest.exists(),
+        "final_complete": not missing_final,
+        "missing_final": missing_final,
+        "issues": issues,
+    }
 
 
 @providers_app.command("check")
@@ -218,6 +304,62 @@ def render_candidate_cmd(
     typer.echo(str(pdf))
 
 
+def _render_editable_layout(
+    editable_layout: Path, project_yaml: Path, out_dir: Path
+) -> dict[str, str]:
+    data = json.loads(editable_layout.read_text(encoding="utf-8"))
+    project = load_project(project_yaml)
+    dieline = load_dieline(project.packaging.size_id)
+    candidate = LayoutCandidate.model_validate(data["candidate"])
+    run_id = str(data.get("run_id", editable_layout.parent.parent.name))
+    manifest = LayoutManifest(
+        run_id=run_id,
+        project_id=project.project_id,
+        dieline_version=dieline.version,
+        candidate=candidate,
+        artwork_refs=dict(data.get("artwork_refs", {})),
+        artwork_hashes=dict(data.get("artwork_hashes", {})),
+    )
+    png, pdf, _overlay = render_manifest(
+        manifest,
+        project,
+        dieline,
+        out_dir,
+    )
+    final_png = out_dir / "packaging.png"
+    final_pdf = out_dir / "packaging.pdf"
+    final_svg = out_dir / "packaging.svg"
+    shutil.copyfile(png, final_png)
+    shutil.copyfile(pdf, final_pdf)
+    render_svg_manifest(manifest, project, dieline, final_svg)
+    report = qa_candidate(run_id, project, dieline, candidate, final_png)
+    qa_ref = out_dir / "qa_report.json"
+    qa_ref.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+    return {
+        "png": str(final_png),
+        "pdf": str(final_pdf),
+        "svg": str(final_svg),
+        "qa": str(qa_ref),
+        "passed": str(report.passed),
+    }
+
+
+@app.command("render-editable")
+def render_editable_cmd(
+    editable_layout: Annotated[Path, typer.Option("--editable-layout")],
+    project_yaml: Annotated[
+        Path, typer.Option()
+    ] = Path("examples/projects/tea_basic/project.yaml"),
+    out_dir: Annotated[Path, typer.Option()] = Path("runs") / "editable_render",
+) -> None:
+    result = _render_editable_layout(editable_layout, project_yaml, out_dir)
+    typer.echo(f"PNG: {result['png']}")
+    typer.echo(f"PDF: {result['pdf']}")
+    typer.echo(f"SVG: {result['svg']}")
+    typer.echo(f"QA: {result['qa']}")
+    raise typer.Exit(0 if result["passed"] == "True" else 5)
+
+
 @app.command("qa")
 def qa_cmd(
     run_id: str = typer.Option(...),
@@ -336,6 +478,67 @@ def export_cmd(
         raise typer.Exit(5)
     typer.echo(f"PNG: {state['final_png_ref']}")
     typer.echo(f"PDF: {state['final_pdf_ref']}")
+
+
+@app.command("cleanup")
+def cleanup_cmd(
+    run_id: str | None = typer.Option(None, "--run-id"),
+    runs_root: Annotated[Path, typer.Option("--runs-root")] = DEFAULT_RUNS_ROOT,
+    older_than: int = typer.Option(0, "--older-than"),
+    all_runs: bool = typer.Option(False, "--all"),
+    include_cache: bool = typer.Option(False, "--include-cache"),
+    delete: bool = typer.Option(False, "--delete"),
+) -> None:
+    if older_than < 0:
+        typer.echo("--older-than must be >= 0", err=True)
+        raise typer.Exit(2)
+    cutoff = time.time() - older_than * 86400 if older_than else None
+    run_dirs = (
+        [runs_root / run_id]
+        if run_id
+        else sorted(runs_root.iterdir())
+        if runs_root.exists()
+        else []
+    )
+    targets: list[Path] = []
+    for run_dir in run_dirs:
+        if run_dir.is_dir():
+            targets.extend(_cleanup_run_dir(run_dir, cutoff, all_runs, delete))
+    if include_cache:
+        caches = [path for path in DEV_CACHE_PATHS if path.exists()]
+        if delete:
+            for path in caches:
+                shutil.rmtree(path) if path.is_dir() else path.unlink()
+        targets.extend(caches)
+    for path in targets:
+        typer.echo(f"{'deleted' if delete else 'would delete'} {path}")
+    typer.echo(f"{'deleted' if delete else 'would delete'} {len(targets)} paths")
+
+
+@app.command("ops-report")
+def ops_report_cmd(
+    runs_root: Annotated[Path, typer.Option("--runs-root")] = DEFAULT_RUNS_ROOT,
+    out: Annotated[Path, typer.Option("--out")] = Path("runs") / "ops_report.json",
+    fail_on_issues: bool = typer.Option(False, "--fail-on-issues"),
+) -> None:
+    run_dirs = (
+        sorted(path for path in runs_root.iterdir() if path.is_dir())
+        if runs_root.exists()
+        else []
+    )
+    runs = [_audit_run_dir(run_dir) for run_dir in run_dirs if run_dir.name != "_cache"]
+    issue_count = sum(len(cast(list[object], run["issues"])) for run in runs)
+    report = {
+        "runs_root": str(runs_root),
+        "run_count": len(runs),
+        "issue_count": issue_count,
+        "runs": runs,
+    }
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+    typer.echo(str(out))
+    if issue_count and fail_on_issues:
+        raise typer.Exit(5)
 
 
 @app.command()

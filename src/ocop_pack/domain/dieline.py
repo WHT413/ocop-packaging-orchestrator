@@ -8,8 +8,26 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ocop_pack.domain.geometry import BoundingBox, Canvas, FoldExclusionZone, FoldLine, PanelRegion
 
-SizeId = Literal["OCOP_130X150", "OCOP_156X180"]
-ALLOWED_SIZE_IDS = {"OCOP_130X150", "OCOP_156X180"}
+SizeId = Literal[
+    "OCOP_130X150",
+    "OCOP_156X180",
+    "OCOP_180X120",
+    "OCOP_220X140",
+    "OCOP_260X160",
+    "OCOP_100X100",
+    "OCOP_130X130",
+    "OCOP_200X150",
+]
+ALLOWED_SIZE_IDS = {
+    "OCOP_130X150",
+    "OCOP_156X180",
+    "OCOP_180X120",
+    "OCOP_220X140",
+    "OCOP_260X160",
+    "OCOP_100X100",
+    "OCOP_130X130",
+    "OCOP_200X150",
+}
 
 
 class PanelSpec(BaseModel):
@@ -91,6 +109,7 @@ class DielineSpec(BaseModel):
 def load_dieline(size_id: str, config_dir: Path = Path("configs/size_profiles")) -> DielineSpec:
     if size_id not in ALLOWED_SIZE_IDS:
         raise ValueError(f"unsupported size_id: {size_id}")
-    file_name = "ocop_130x150.v2.yaml" if size_id == "OCOP_130X150" else "ocop_156x180.v2.yaml"
+    # Derive filename from size_id: OCOP_130X150 -> ocop_130x150.v2.yaml
+    file_name = size_id.lower() + ".v2.yaml"
     data: dict[str, Any] = yaml.safe_load((config_dir / file_name).read_text(encoding="utf-8"))
     return DielineSpec.model_validate(data)

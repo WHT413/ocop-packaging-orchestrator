@@ -1,0 +1,29 @@
+project_id: matcha_basic
+product:
+  name: "Bot tra xanh matcha OCOP"
+  category: "Tra xanh"
+  net_content: "80 g"
+  ingredients: "Bot tra xanh say min tu la tra non, chon loc va say lanh de giu mau xanh tu nhien. Khong huong lieu tong hop."
+  usage_instructions: "Pha 2 g bot voi 60 ml nuoc am 70-80 do C, danh deu. Co the pha latte hoac dung lam banh."
+  storage_instructions: "Dong kin sau khi mo, bao quan noi kho mat. Nen dung trong 30 ngay sau khi mo."
+  expiry_or_shelf_life: "12 thang ke tu ngay san xuat"
+producer:
+  manufacturer_name: "Xuong Tra Moc Son"
+  manufacturer_address: "Lam Dong, Viet Nam"
+  contact_phone: "0933000000"
+origin_text: "San pham tu vung nguyen lieu tra Lam Dong, Viet Nam"
+branding:
+  logos:
+    - asset_id: brand
+      path: ../tea_basic/assets/brand.png
+      asset_type: png
+      role: brand
+  ocop:
+    logo_path: ../tea_basic/assets/ocop.png
+    star_count: 3
+packaging:
+  size_id: OCOP_156X180
+  qr_payload: "https://example.com/ocop/matcha_basic"
+  show_qr: true
+  show_barcode: true
+creative_brief_raw: "Nguoi dung muon bao bi bot tra xanh matcha OCOP toi gian nhung cao cap, hop voi tui/nhan kich thuoc lon. Dung tone xanh matcha, kem nhat, diem nhan la la tra va bot matcha min. Nen co vung title lon, logo OCOP ro, QR, barcode, bang dinh duong va thong tin su dung. Cam giac sach, hien dai, de in, khong qua nhieu hoa tiet nho, khong de component be."

@@ -33,9 +33,9 @@ class VisualTheme:
 
 
 SUPPORTED_TYPOGRAPHY_MOODS = {"artisanal_serif", "refined_natural", "functional_safe"}
-SUPPORTED_PALETTE_MOODS = {"honey_warm", "matcha_cool"}
+SUPPORTED_PALETTE_MOODS = {"honey_warm", "matcha_cool", "coffee_roast", "lotus_premium"}
 SUPPORTED_ARTWORK_PRESENCE = {"soft", "balanced", "rich"}
-SUPPORTED_CARD_STYLES = {"cream_gold", "calm_sage"}
+SUPPORTED_CARD_STYLES = {"cream_gold", "calm_sage", "kraft_coffee", "lotus_paper"}
 DISPLAY_ROLES = {"product_title", "product_subtitle", "short_claim", "title"}
 FUNCTIONAL_FONT_ASSET_ID = "noto-sans-regular"
 DISPLAY_FONT_ASSET_ID = "noto-sans-bold"
@@ -55,7 +55,7 @@ THEMES: dict[str, VisualTheme] = {
         subtitle_font_asset_id=DISPLAY_FONT_ASSET_ID,
         body_font_asset_id=FUNCTIONAL_FONT_ASSET_ID,
         artwork_mode="softened_full_background",
-        artwork_opacity_range=(0.34, 0.48),
+        artwork_opacity_range=(0.86, 0.98),
         card_opacity=0.88,
         texture_tokens=("warm_grain", "coffee_blossom"),
         accent_tokens=("amber_rule",),
@@ -73,19 +73,74 @@ THEMES: dict[str, VisualTheme] = {
         subtitle_font_asset_id=DISPLAY_FONT_ASSET_ID,
         body_font_asset_id=FUNCTIONAL_FONT_ASSET_ID,
         artwork_mode="framed_hero_region",
-        artwork_opacity_range=(0.52, 0.72),
+        artwork_opacity_range=(0.9, 1.0),
         card_opacity=0.92,
         texture_tokens=("rice_paper", "tea_leaf"),
         accent_tokens=("sage_rule",),
+    ),
+    "coffee_roast": VisualTheme(
+        theme_id="coffee_roast",
+        background_color="#f3ead7",
+        card_fill="#f8ecd1",
+        card_secondary_fill="#ead5af",
+        primary_text_color="#4b2714",
+        secondary_text_color="#68401f",
+        accent_color="#7a4a1d",
+        border_color="#b8894e",
+        title_font_asset_id=DISPLAY_FONT_ASSET_ID,
+        subtitle_font_asset_id=DISPLAY_FONT_ASSET_ID,
+        body_font_asset_id=FUNCTIONAL_FONT_ASSET_ID,
+        artwork_mode="softened_full_background",
+        artwork_opacity_range=(0.86, 0.98),
+        card_opacity=0.86,
+        texture_tokens=("kraft_paper", "coffee_leaf"),
+        accent_tokens=("roast_rule",),
+    ),
+    "lotus_premium": VisualTheme(
+        theme_id="lotus_premium",
+        background_color="#fbf3df",
+        card_fill="#fff5da",
+        card_secondary_fill="#f2dfb8",
+        primary_text_color="#5b3515",
+        secondary_text_color="#755128",
+        accent_color="#a88b2d",
+        border_color="#d6ba62",
+        title_font_asset_id=DISPLAY_FONT_ASSET_ID,
+        subtitle_font_asset_id=DISPLAY_FONT_ASSET_ID,
+        body_font_asset_id=FUNCTIONAL_FONT_ASSET_ID,
+        artwork_mode="softened_full_background",
+        artwork_opacity_range=(0.88, 0.99),
+        card_opacity=0.84,
+        texture_tokens=("lotus_paper", "premium_grain"),
+        accent_tokens=("lotus_gold_rule",),
     ),
 }
 
 
 def semantic_intent(project: ProjectSpec, plan: DesignPlan, intent: LayoutIntent) -> dict[str, str]:
-    text = " ".join(
-        [project.product.name, project.product.category, project.creative_brief_raw, *plan.palette]
+    product_text = " ".join(
+        [project.product.name, project.product.category, project.creative_brief_raw]
     ).lower()
-    if any(token in text for token in ["matcha", "trà xanh", "tra xanh", "tea green", "green"]):
+    text = " ".join([product_text, *plan.palette]).lower()
+    product_uses_honey = any(token in product_text for token in ["mat ong", "honey"])
+    if any(token in product_text for token in ["ca phe", "coffee", "cafe"]):
+        palette_mood = "coffee_roast"
+        typography_mood = "artisanal_serif"
+        card_style = "kraft_coffee"
+    elif any(token in product_text for token in ["hat sen", "sen ", "lotus"]):
+        palette_mood = "lotus_premium"
+        typography_mood = "refined_natural"
+        card_style = "lotus_paper"
+    elif product_uses_honey:
+        palette_mood = "honey_warm"
+        typography_mood = "artisanal_serif"
+        card_style = "cream_gold"
+    elif (
+        any(
+        token in text for token in ["matcha", "trà xanh", "tra xanh", "tea green", "green"]
+        )
+        or any(_is_green_hex(color) for color in plan.palette)
+    ):
         palette_mood = "matcha_cool"
         typography_mood = "refined_natural"
         card_style = "calm_sage"
@@ -110,7 +165,12 @@ def resolve_visual_theme(
 ) -> tuple[VisualTheme, dict[str, object]]:
     semantic = semantic_intent(project, plan, intent)
     _validate_semantic(semantic)
-    theme_id = "honey_artisanal" if semantic["palette_mood"] == "honey_warm" else "matcha_refined"
+    theme_id = {
+        "honey_warm": "honey_artisanal",
+        "matcha_cool": "matcha_refined",
+        "coffee_roast": "coffee_roast",
+        "lotus_premium": "lotus_premium",
+    }[semantic["palette_mood"]]
     theme = THEMES[theme_id]
     if semantic["typography_mood"] == "functional_safe":
         theme = VisualTheme(
@@ -233,6 +293,17 @@ def _validate_semantic(semantic: dict[str, str]) -> None:
     for key, allowed in checks.items():
         if semantic.get(key) not in allowed:
             raise VisualThemeError(f"unsupported planner {key}: {semantic.get(key)}")
+
+
+def _is_green_hex(value: str) -> bool:
+    color = value.strip().lstrip("#")
+    if len(color) != 6:
+        return False
+    try:
+        red, green, blue = (int(color[i : i + 2], 16) for i in (0, 2, 4))
+    except ValueError:
+        return False
+    return green > red and green >= blue
 
 
 def _qa(

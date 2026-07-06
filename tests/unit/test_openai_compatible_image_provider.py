@@ -78,11 +78,11 @@ def test_openai_image_provider_sends_minimal_generation_payload(
         _request(), ProviderContext(run_id="run", thread_id="run", node="probe"), tmp_path
     )
 
-    assert captured["url"] == "https://image.invalid/v1/images/generations"
+    assert captured["url"] == "https://image.invalid/v1/images"
     assert captured["payload"]["model"] == "genImage"
     assert captured["payload"]["n"] == 1
     assert captured["payload"]["size"] == "32x32"
-    assert captured["payload"]["response_format"] == "b64_json"
+    assert captured["payload"]["output_format"] == "png"
     assert "test-key" not in json.dumps(captured["payload"])
     assert Path(result.artifact_ref).exists()
     assert result.request_id == "img-test"

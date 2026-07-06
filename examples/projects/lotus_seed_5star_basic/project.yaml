@@ -1,0 +1,29 @@
+project_id: lotus_seed_5star_basic
+product:
+  name: "Hat sen say cao cap OCOP"
+  category: "Hat sen"
+  net_content: "180 g"
+  ingredients: "Hat sen giau lua chon loc, say gion bang cong nghe nhiet thap, giu vi bui tu nhien. Khong chat bao quan."
+  usage_instructions: "Dung truc tiep nhu mon an vat, pha cung tra nong hoac dung che bien che, sua hat va mon trang mieng."
+  storage_instructions: "Bao quan noi kho rao, thoang mat, tranh am. Dung tot nhat trong 7 ngay sau khi mo goi."
+  expiry_or_shelf_life: "12 thang ke tu ngay san xuat"
+producer:
+  manufacturer_name: "Sen Viet Dong Thap"
+  manufacturer_address: "Dong Thap, Viet Nam"
+  contact_phone: "0905000000"
+origin_text: "San pham tu vung sen Dong Thap, Viet Nam"
+branding:
+  logos:
+    - asset_id: brand
+      path: ../tea_basic/assets/brand.png
+      asset_type: png
+      role: brand
+  ocop:
+    logo_path: ../tea_basic/assets/ocop.png
+    star_count: 5
+packaging:
+  size_id: OCOP_156X180
+  qr_payload: "https://example.com/ocop/lotus_seed_5star_basic"
+  show_qr: true
+  show_barcode: true
+creative_brief_raw: "Nguoi dung muon bao bi hat sen OCOP 5 sao co cam giac qua tang cao cap nhung van thuan nong san Viet Nam. Tone chu dao trang nga, vang sen, xanh la tram; artwork co hoa sen, la sen, hat sen va chat lieu giay my thuat. Bo cuc can sang, ro hierarchy: ten san pham lon, OCOP 5 sao noi bat, khoi luong, thong tin nha san xuat, QR, barcode, thanh phan, huong dan, bao quan, bang dinh duong. Uu tien in an sac net, component khong qua nho, nen nghe thuat duoc giu ro thay vi bi phu card vang day."

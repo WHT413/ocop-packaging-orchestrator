@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import re
 import urllib.error
@@ -146,6 +147,16 @@ class OpenAICompatibleVisionCriticProvider:
         critic_prompt = next(
             prompt.content for prompt in prompts if prompt.prompt_id.endswith("task")
         )
+        user_text = (
+            critic_prompt
+            + "\n\nValid candidate IDs: "
+            + ", ".join(request.candidate_ids)
+            + "\nValid artwork IDs for targeted_revision: "
+            + ", ".join(request.artwork_ids)
+            + "\n\n<critic_request_json>\n"
+            + request.model_dump_json()
+            + "\n</critic_request_json>"
+        )
         return {
             "model": self.model,
             "temperature": 0,
@@ -154,14 +165,13 @@ class OpenAICompatibleVisionCriticProvider:
                 {"role": "system", "content": system_prompt},
                 {
                     "role": "user",
-                    "content": critic_prompt
-                    + "\n\nValid candidate IDs: "
-                    + ", ".join(request.candidate_ids)
-                    + "\nValid artwork IDs for targeted_revision: "
-                    + ", ".join(request.artwork_ids)
-                    + "\n\n<critic_request_json>\n"
-                    + request.model_dump_json()
-                    + "\n</critic_request_json>",
+                    "content": [
+                        {"type": "text", "text": user_text},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": _image_data_url(request.contact_sheet_path)},
+                        },
+                    ],
                 },
             ],
         }
@@ -182,6 +192,16 @@ def _parse_chat_completion(raw: str) -> dict[str, Any]:
             "vision critic returned non-object response", code="VISION_TRANSPORT_INVALID"
         )
     return parsed
+
+
+def _image_data_url(path: Path) -> str:
+    try:
+        encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+    except OSError as exc:
+        raise ProviderSchemaError(
+            "vision critic contact sheet image cannot be read", code="VISION_INPUT_INVALID"
+        ) from exc
+    return f"data:image/png;base64,{encoded}"
 
 
 def _parse_sse_chat_completion(raw: str) -> dict[str, Any]:

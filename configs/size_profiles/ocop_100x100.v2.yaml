@@ -1,0 +1,8 @@
+size_id: OCOP_100X100
+version: full_spread_v2
+width_mm: 100.0
+height_mm: 100.0
+vertical_folds_x_mm: [22.00, 78.00]
+horizontal_folds_y_mm: [5.00, 95.00]
+fold_exclusion_mm: 2.0
+glue_flap: null

@@ -1,0 +1,8 @@
+size_id: OCOP_200X150
+version: full_spread_v2
+width_mm: 200.0
+height_mm: 150.0
+vertical_folds_x_mm: [44.00, 156.00]
+horizontal_folds_y_mm: [7.50, 142.50]
+fold_exclusion_mm: 2.0
+glue_flap: null

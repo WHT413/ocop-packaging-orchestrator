@@ -4,7 +4,7 @@ from typing import Final
 
 from ocop_pack.agents.visual_critic.schemas import CandidateAestheticScore
 
-RUBRIC_VERSION: Final = "critic-rubric.v1"
+RUBRIC_VERSION: Final = "critic-rubric.v2"
 RUBRIC_WEIGHTS: Final[dict[str, float]] = {
     "readability_hierarchy": 0.30,
     "balance_whitespace": 0.25,

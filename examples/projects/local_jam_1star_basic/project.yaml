@@ -1,0 +1,29 @@
+project_id: local_jam_1star_basic
+product:
+  name: "Mut dau tam OCOP"
+  category: "Mut trai cay"
+  net_content: "180 g"
+  ingredients: "Dau tam chin, duong mia, nuoc cot chanh va pectin tu nhien. Khong dung mau tong hop."
+  usage_instructions: "Dung kem banh mi, sua chua, tra trai cay hoac pha voi nuoc am. Khuay deu truoc khi dung."
+  storage_instructions: "Bao quan noi kho mat khi chua mo nap. Sau khi mo, bao quan lanh va dung trong 15 ngay."
+  expiry_or_shelf_life: "9 thang ke tu ngay san xuat"
+producer:
+  manufacturer_name: "Co So Tam Moc"
+  manufacturer_address: "Lam Dong, Viet Nam"
+  contact_phone: "0921000000"
+origin_text: "San pham che bien tu dau tam Lam Dong, Viet Nam"
+branding:
+  logos:
+    - asset_id: brand
+      path: ../tea_basic/assets/brand.png
+      asset_type: png
+      role: brand
+  ocop:
+    logo_path: ../tea_basic/assets/ocop.png
+    star_count: 1
+packaging:
+  size_id: OCOP_130X150
+  qr_payload: "https://example.com/ocop/local_jam_1star_basic"
+  show_qr: true
+  show_barcode: true
+creative_brief_raw: "Nguoi dung muon nhan mut dau tam OCOP 1 sao gan gui, thu cong, hop voi san pham dia phuong moi len ke. Tone tim dau tam, kem giay, xanh la nhe; artwork co trai dau tam, lo mut va net ve handmade. Can co ten san pham lon, OCOP 1 sao dung theo du lieu, khoi luong, thong tin co so, QR, barcode, thanh phan, huong dan, bao quan va bang dinh duong. Khong lam nhu hang sieu cao cap, khong de layout qua rong."

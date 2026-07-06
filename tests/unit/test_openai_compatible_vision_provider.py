@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import urllib.error
 from pathlib import Path
@@ -40,9 +41,19 @@ def _configure(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OCOP_VISION_API_KEY", "test-key")
 
 
-def _request() -> CriticRequest:
+def _contact_sheet(tmp_path: Path) -> Path:
+    path = tmp_path / "contact_sheet.png"
+    path.write_bytes(
+        base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+        )
+    )
+    return path
+
+
+def _request(contact_sheet_path: Path) -> CriticRequest:
     return CriticRequest(
-        contact_sheet_path=Path("contact_sheet.png"),
+        contact_sheet_path=contact_sheet_path,
         contact_sheet_hash="sheet-hash",
         candidate_ids=["C001"],
         candidate_hashes={"C001": "candidate-hash"},
@@ -87,6 +98,7 @@ def _decision_payload(status: str = "PASS") -> dict[str, Any]:
 
 def test_openai_vision_provider_sends_chat_completion_and_maps_result(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     _configure(monkeypatch)
     captured: dict[str, Any] = {}
@@ -108,13 +120,18 @@ def test_openai_vision_provider_sends_chat_completion_and_maps_result(
     )
 
     result = OpenAICompatibleVisionCriticProvider().evaluate(
-        _request(), ProviderContext(run_id="run", thread_id="run", node="visual_critic")
+        _request(_contact_sheet(tmp_path)),
+        ProviderContext(run_id="run", thread_id="run", node="visual_critic"),
     )
 
     assert captured["url"] == "https://vision.invalid/v1/chat/completions"
     assert captured["payload"]["model"] == "vision-test"
     assert captured["payload"]["response_format"] == {"type": "json_object"}
     assert captured["payload"]["temperature"] == 0
+    user_content = captured["payload"]["messages"][1]["content"]
+    assert user_content[0]["type"] == "text"
+    assert user_content[1]["type"] == "image_url"
+    assert user_content[1]["image_url"]["url"].startswith("data:image/png;base64,")
     assert "test-key" not in json.dumps(captured["payload"])
     assert result.provider == "openai-compatible"
     assert result.model_id == "vision-test"
@@ -127,6 +144,7 @@ def test_openai_vision_provider_sends_chat_completion_and_maps_result(
 
 def test_openai_vision_provider_reports_schema_locations(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     _configure(monkeypatch)
     invalid_decision = _decision_payload() | {"candidate_scores": []}
@@ -140,7 +158,8 @@ def test_openai_vision_provider_reports_schema_locations(
 
     with pytest.raises(ProviderSchemaError) as exc_info:
         OpenAICompatibleVisionCriticProvider().evaluate(
-            _request(), ProviderContext(run_id="run", thread_id="run", node="visual_critic")
+            _request(_contact_sheet(tmp_path)),
+            ProviderContext(run_id="run", thread_id="run", node="visual_critic"),
         )
 
     message = str(exc_info.value)
@@ -149,7 +168,10 @@ def test_openai_vision_provider_reports_schema_locations(
     assert "raw_response_hash=" in message
 
 
-def test_openai_vision_provider_parses_valid_sse_chunks(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_openai_vision_provider_parses_valid_sse_chunks(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     _configure(monkeypatch)
     decision = json.dumps(_decision_payload())
     raw = "\n".join(
@@ -169,7 +191,8 @@ def test_openai_vision_provider_parses_valid_sse_chunks(monkeypatch: pytest.Monk
     )
 
     result = OpenAICompatibleVisionCriticProvider().evaluate(
-        _request(), ProviderContext(run_id="run", thread_id="run", node="visual_critic")
+        _request(_contact_sheet(tmp_path)),
+        ProviderContext(run_id="run", thread_id="run", node="visual_critic"),
     )
 
     assert result.decision.status == "PASS"
@@ -208,7 +231,10 @@ def test_openai_vision_provider_ignores_reasoning_content() -> None:
     assert parsed["choices"][0]["message"]["content"] == '{"a":1}'
 
 
-def test_openai_vision_provider_maps_auth_error(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_openai_vision_provider_maps_auth_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     _configure(monkeypatch)
 
     def raise_http_error(*_args: object, **_kwargs: object) -> None:
@@ -220,5 +246,6 @@ def test_openai_vision_provider_maps_auth_error(monkeypatch: pytest.MonkeyPatch)
 
     with pytest.raises(ProviderAuthenticationError):
         OpenAICompatibleVisionCriticProvider().evaluate(
-            _request(), ProviderContext(run_id="run", thread_id="run", node="visual_critic")
+            _request(_contact_sheet(tmp_path)),
+            ProviderContext(run_id="run", thread_id="run", node="visual_critic"),
         )

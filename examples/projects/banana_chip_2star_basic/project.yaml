@@ -1,0 +1,29 @@
+project_id: banana_chip_2star_basic
+product:
+  name: "Chuoi say gion OCOP"
+  category: "Trai cay say"
+  net_content: "100 g"
+  ingredients: "Chuoi su chin tu nhien, dau thuc vat thuc pham va mot it duong mia. Khong dung chat tao mau."
+  usage_instructions: "Dung truc tiep sau khi mo goi. Co the dung kem sua chua, ngu coc hoac lam topping mon trang mieng."
+  storage_instructions: "Dong kin sau khi mo, bao quan noi kho rao, tranh anh nang va khong khi am."
+  expiry_or_shelf_life: "10 thang ke tu ngay san xuat"
+producer:
+  manufacturer_name: "Nong San Ba Lua"
+  manufacturer_address: "Ben Tre, Viet Nam"
+  contact_phone: "0944000000"
+origin_text: "San pham tu vung nguyen lieu chuoi Ben Tre, Viet Nam"
+branding:
+  logos:
+    - asset_id: brand
+      path: ../tea_basic/assets/brand.png
+      asset_type: png
+      role: brand
+  ocop:
+    logo_path: ../tea_basic/assets/ocop.png
+    star_count: 2
+packaging:
+  size_id: OCOP_130X150
+  qr_payload: "https://example.com/ocop/banana_chip_2star_basic"
+  show_qr: true
+  show_barcode: true
+creative_brief_raw: "Nguoi dung muon bao bi chuoi say gion OCOP 2 sao vui tuoi nhung van sach va de in. Tone vang chuoi, kem, xanh la nong san; artwork co lat chuoi say, la chuoi va nen giay nhe. Bo cuc can ro nhu nhan ban le that: ten san pham lon, OCOP 2 sao dung theo du lieu, khoi luong, nha san xuat, QR, barcode, thanh phan, huong dan, bao quan, bang dinh duong. Khong dung mau neon, khong de thanh phan qua nho."

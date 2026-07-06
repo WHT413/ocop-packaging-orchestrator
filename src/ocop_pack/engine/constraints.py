@@ -110,7 +110,10 @@ def evaluate_candidate(
         _result("HC-10", not _bad_overlap(candidate.elements), [], "critical overlap policy")
     )
     results.extend(_composition_results(dieline, candidate))
-    for source in ["product.name", "product.ingredients", "packaging.qr_payload"]:
+    required_sources = ["product.name", "product.net_content"]
+    if project.packaging.show_qr:
+        required_sources.append("packaging.qr_payload")
+    for source in required_sources:
         results.append(
             _result(
                 "HC-11",
@@ -204,6 +207,9 @@ def _composition_results(
         "info_block_intent",
         "protected_zone_strategy",
         "contrast_strategy",
+        "frame_style",
+        "font_mood",
+        "contrast_style",
         "artwork_mode",
     ]
     ignored = [name for name in consumed_fields if name not in candidate.metadata]

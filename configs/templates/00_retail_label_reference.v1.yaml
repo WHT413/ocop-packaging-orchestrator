@@ -1,0 +1,19 @@
+config_version: template-registry.v1
+template_id: retail_label_reference_v1
+family: retail_label_reference
+version: v1
+topology: [background, ocop_header, hero_title, subtitle, side_badges, lower_info_panel, right_traceability_stack, footer_origin_band]
+slot_ownership:
+  title: center_panel
+  supporting_info: center_panel
+  left_text: left_panel
+  right_text: right_panel
+  details_text: center_panel
+  nutrition_text: center_panel
+  qr: right_panel
+  barcode: right_panel
+hierarchy: [ocop_lockup, title, supporting_info, left_text, right_text, qr, barcode, details_text, nutrition_text, footer_text]
+eligibility:
+  panel_strategy: [center_lockup_balanced_sides]
+  content_density: [balanced, rich]
+  hierarchy_model: [title_first, logo_title_info]

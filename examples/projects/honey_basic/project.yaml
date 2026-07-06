@@ -1,0 +1,29 @@
+project_id: honey_basic
+product:
+  name: "Mat ong hoa ca phe OCOP"
+  category: "Mat ong"
+  net_content: "250 g"
+  ingredients: "Mat ong nguyen chat tu vung hoa ca phe Tay Nguyen, loc tho, khong pha tron duong hay phu gia."
+  usage_instructions: "Dung truc tiep 1-2 thia moi ngay, pha voi nuoc am duoi 40 do C hoac dung kem banh, tra, sua chua."
+  storage_instructions: "Bao quan noi kho mat, tranh anh nang truc tiep. Khong can bao quan lanh."
+  expiry_or_shelf_life: "24 thang ke tu ngay san xuat"
+producer:
+  manufacturer_name: "Mat Ong Cao Nguyen"
+  manufacturer_address: "Buon Ma Thuot, Viet Nam"
+  contact_phone: "0912000000"
+origin_text: "San pham khai thac va dong goi tai Buon Ma Thuot, Viet Nam"
+branding:
+  logos:
+    - asset_id: brand
+      path: ../tea_basic/assets/brand.png
+      asset_type: png
+      role: brand
+  ocop:
+    logo_path: ../tea_basic/assets/ocop.png
+    star_count: 3
+packaging:
+  size_id: OCOP_130X150
+  qr_payload: "https://example.com/ocop/honey_basic"
+  show_qr: true
+  show_barcode: true
+creative_brief_raw: "Nguoi dung muon bao bi mat ong OCOP am, tin cay, co cam giac nong san dia phuong va sach. Nen dung tone vang mat ong, nau am, kem giay; artwork nen co hoa ca phe, giot mat ong, chat lieu handmade. Title Mat ong hoa ca phe OCOP phai lon, OCOP 3 sao ro, QR va barcode nhu nhan ban le that. Them khoi thanh phan, huong dan, bao quan, bang dinh duong. Tranh phong cach cartoon, tranh ong qua tre con, khong dung nen trang rong."

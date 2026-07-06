@@ -9,6 +9,31 @@ ArtworkStrategy = Literal[
     "framed_hero_region",
     "panel_local_decorative_strip",
 ]
+FrameStyle = Literal[
+    "theme_default",
+    "paper_label",
+    "soft_scrim",
+    "kraft_card",
+    "premium_badge",
+    "torn_paper",
+    "leaf_badge",
+    "woven_label",
+    "vellum_overlay",
+    "brush_stroke",
+    "natural_reference_mix",
+]
+FontMood = Literal[
+    "theme_default",
+    "functional_safe",
+    "refined_natural",
+    "artisanal_bold",
+]
+ContrastStyle = Literal[
+    "theme_default",
+    "light_scrim",
+    "balanced_scrim",
+    "opaque_card",
+]
 
 
 class ArtworkConcept(BaseModel):
@@ -18,7 +43,7 @@ class ArtworkConcept(BaseModel):
     description: str
     prompt: str
     negative_prompt: str
-    artwork_strategy: ArtworkStrategy
+    artwork_strategy: ArtworkStrategy = "softened_full_background"
 
     @field_validator("prompt", "negative_prompt", "description")
     @classmethod
@@ -77,6 +102,9 @@ class LayoutIntent(BaseModel):
         "opaque_light_cards",
         "semi_opaque_warm_scrims",
     ]
+    frame_style: FrameStyle = "theme_default"
+    font_mood: FontMood = "theme_default"
+    contrast_style: ContrastStyle = "theme_default"
 
 
 class DesignPlan(BaseModel):

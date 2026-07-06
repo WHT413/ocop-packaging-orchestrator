@@ -63,7 +63,8 @@ from ocop_pack.providers.vision.mock import MockVisualCriticProvider
 from ocop_pack.providers.vision.openai_compatible import OpenAICompatibleVisionCriticProvider
 from ocop_pack.schemas.design_planner import DesignPlan
 from ocop_pack.services.qa_service import qa_candidate
-from ocop_pack.services.render_service import render_manifest
+from ocop_pack.services.render_service import PNG_RENDER_DPI, render_manifest
+from ocop_pack.services.svg_service import render_svg_manifest
 from ocop_pack.services.validation_service import load_project, project_hash
 from ocop_pack.storage.local_artifact_store import LocalArtifactStore
 
@@ -84,7 +85,7 @@ SIDE_EFFECT_NODES = {
     "export_bundle",
 }
 
-RENDERER_VERSION = "renderer.v2-artwork"
+RENDERER_VERSION = "renderer.v3-readable-hires"
 
 MANDATORY_ARTWORK_PROHIBITION = (
     "Artwork layer only. No text, no letters, no words, no numbers. "
@@ -336,17 +337,49 @@ class WorkflowRunner:
                 self._transition(state, RunStatus.PROVIDER_CONFIGURATION_FAILED, "plan_design")
                 return
             except ProviderSchemaError as exc:
+                if not self.online:
+                    state["errors"].append(
+                        WorkflowError(code=exc.code, message=str(exc), node="plan_design")
+                    )
+                    self._transition(state, RunStatus.PLANNING_FAILED, "plan_design")
+                    return
                 state["errors"].append(
-                    WorkflowError(code=exc.code, message=str(exc), node="plan_design")
+                    WorkflowError(
+                        code=exc.code,
+                        message=f"{exc}; fell back to mock planner",
+                        node="plan_design",
+                    )
                 )
-                self._transition(state, RunStatus.PLANNING_FAILED, "plan_design")
-                return
+                provider = MockPlannerProvider()
+                result = provider.create_design_plan(
+                    request,
+                    ProviderContext(
+                        run_id=state["run_id"], thread_id=state["thread_id"], node="plan_design"
+                    ),
+                )
+                attempts = 0
             except ProviderError as exc:
+                if not self.online:
+                    state["errors"].append(
+                        WorkflowError(code=exc.code, message=str(exc), node="plan_design")
+                    )
+                    self._transition(state, RunStatus.PROVIDER_FAILED, "plan_design")
+                    return
                 state["errors"].append(
-                    WorkflowError(code=exc.code, message=str(exc), node="plan_design")
+                    WorkflowError(
+                        code=exc.code,
+                        message=f"{exc}; fell back to mock planner",
+                        node="plan_design",
+                    )
                 )
-                self._transition(state, RunStatus.PROVIDER_FAILED, "plan_design")
-                return
+                provider = MockPlannerProvider()
+                result = provider.create_design_plan(
+                    request,
+                    ProviderContext(
+                        run_id=state["run_id"], thread_id=state["thread_id"], node="plan_design"
+                    ),
+                )
+                attempts = 0
             state["provider_attempts"] += attempts
             state["llm_calls"] += 1
             plan = result.design_plan
@@ -375,22 +408,32 @@ class WorkflowRunner:
         )
         plan = DesignPlan.model_validate_json(plan_path.read_text(encoding="utf-8"))
         refs: list[str] = []
-        provider = None
-        for concept in plan.artwork_concepts[:2]:
+        image_settings = ImageSettings()
+        try:
+            provider = (
+                OpenAICompatibleImageProvider()
+                if self.online and image_settings.provider == "openai-compatible"
+                else FixtureArtworkProvider()
+            )
+        except ProviderConfigurationError as exc:
+            state["errors"].append(
+                WorkflowError(code=exc.code, message=str(exc), node="generate_artworks")
+            )
+            self._transition(
+                state, RunStatus.PROVIDER_CONFIGURATION_FAILED, "generate_artworks"
+            )
+            return
+        artwork_count = min(image_settings.default_count, image_settings.hard_max_calls)
+        for concept in plan.artwork_concepts[:artwork_count]:
             path = self.store.path(state["run_id"], f"artwork/{concept.concept_id}.png")
-            if path.exists():
-                refs.append(str(path))
-                state["cache_hits"] += 1
-                state["artwork_hashes"][concept.concept_id] = file_hash(path)
-                continue
             prompt, negative_prompt = build_artwork_prompt(concept.prompt, plan, "square")
-            image_settings = ImageSettings()
             req_hash = stable_cache_key(
                 {
                     "concept": concept.model_dump(mode="json"),
                     "prompt": prompt,
                     "negative_prompt": negative_prompt,
-                    "online": self.online,
+                    "provider": provider.provider,
+                    "model": provider.model,
                     "target_dimensions": [
                         image_settings.target_width_px,
                         image_settings.target_height_px,
@@ -408,13 +451,29 @@ class WorkflowRunner:
                 request_hash=req_hash,
                 output_format=image_settings.output_format,
             )
+            manifest_path = path.with_suffix(".manifest.json")
+            if (
+                path.exists()
+                and self._artwork_cache_matches(manifest_path, request, provider, path)
+            ):
+                refs.append(str(path))
+                state["cache_hits"] += 1
+                state["artwork_hashes"][concept.concept_id] = file_hash(path)
+                continue
+            shared_path = self._shared_artwork_cache_path(request)
+            shared_manifest = shared_path.with_suffix(".manifest.json")
+            if (
+                shared_path.exists()
+                and self._artwork_cache_matches(shared_manifest, request, provider, shared_path)
+            ):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(shared_path, path)
+                self._write_artwork_manifest(manifest_path, request, provider, file_hash(path))
+                refs.append(str(path))
+                state["cache_hits"] += 1
+                state["artwork_hashes"][concept.concept_id] = file_hash(path)
+                continue
             try:
-                provider = (
-                    OpenAICompatibleImageProvider()
-                    if self.online and image_settings.provider == "openai-compatible"
-                    else FixtureArtworkProvider()
-                )
-
                 def generate_call(
                     provider_arg: FixtureArtworkProvider | OpenAICompatibleImageProvider = provider,
                     request_arg: ArtworkRequest = request,
@@ -451,6 +510,10 @@ class WorkflowRunner:
             state["image_calls"] += 1
             refs.append(result.artifact_ref)
             state["artwork_hashes"][concept.concept_id] = result.sha256
+            self._write_artwork_manifest(manifest_path, request, provider, result.sha256)
+            shared_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(result.artifact_ref, shared_path)
+            self._write_artwork_manifest(shared_manifest, request, provider, result.sha256)
             if result.provenance:
                 self.store.write_json_once(
                     state["run_id"],
@@ -458,9 +521,8 @@ class WorkflowRunner:
                     result.provenance.model_dump(mode="json"),
                 )
         state["artwork_refs"] = refs
-        if provider is not None:
-            state["image_provider"] = provider.provider
-            state["image_model"] = provider.model
+        state["image_provider"] = provider.provider
+        state["image_model"] = provider.model
         self._transition(state, RunStatus.ARTWORK_READY, "generate_artworks")
 
     def _generate_layout_candidates(self, state: PackagingState) -> None:
@@ -471,7 +533,12 @@ class WorkflowRunner:
         candidates = [
             c
             for c in attach_artwork_layers(
-                generate_candidates(project, dieline, design_plan=plan),
+                generate_candidates(
+                    project,
+                    dieline,
+                    seed=int(sha256(state["run_id"].encode("utf-8")).hexdigest()[:8], 16),
+                    design_plan=plan,
+                ),
                 artwork_refs,
                 state["artwork_hashes"],
             )
@@ -790,6 +857,8 @@ class WorkflowRunner:
         state["qa_report_ref"] = self.store.write_json_once(
             state["run_id"], "qa/draft_qa_report.json", report.model_dump(mode="json")
         )
+        if not report.passed:
+            self._record_qa_failure(state, report, "run_draft_qa", "qa/draft_failures.json")
         self._transition(
             state,
             RunStatus.DRAFT_QA_PASSED if report.passed else RunStatus.FAILED_QA,
@@ -806,31 +875,35 @@ class WorkflowRunner:
         dieline = load_dieline(project.packaging.size_id)
         final_png = self.store.path(state["run_id"], "final/packaging.png")
         final_pdf = self.store.path(state["run_id"], "final/packaging.pdf")
+        final_svg = self.store.path(state["run_id"], "final/packaging.svg")
         dep_hash = self._render_dependency_hash(state, candidate, dieline.version)
         manifest_path = self.store.path(state["run_id"], "final/packaging.manifest.json")
         if (
             self._needs_render(manifest_path, dep_hash)
             or not final_png.exists()
             or not final_pdf.exists()
+            or not final_svg.exists()
         ):
+            layout_manifest = LayoutManifest(
+                run_id=state["run_id"],
+                project_id=project.project_id,
+                dieline_version=dieline.version,
+                candidate=candidate,
+                artwork_refs=self._artwork_ref_map(state),
+                artwork_hashes=state["artwork_hashes"],
+                metadata={
+                    "dependency_hash": dep_hash,
+                    "renderer_version": RENDERER_VERSION,
+                },
+            )
             try:
                 png, pdf, _ = render_manifest(
-                    LayoutManifest(
-                        run_id=state["run_id"],
-                        project_id=project.project_id,
-                        dieline_version=dieline.version,
-                        candidate=candidate,
-                        artwork_refs=self._artwork_ref_map(state),
-                        artwork_hashes=state["artwork_hashes"],
-                        metadata={
-                            "dependency_hash": dep_hash,
-                            "renderer_version": RENDERER_VERSION,
-                        },
-                    ),
+                    layout_manifest,
                     project,
                     dieline,
                     self.store.run_dir(state["run_id"]),
                 )
+                svg = render_svg_manifest(layout_manifest, project, dieline, final_svg)
             except RenderAssetError:
                 self._transition(state, RunStatus.FAILED_RENDER, "render_final_outputs")
                 return
@@ -839,11 +912,64 @@ class WorkflowRunner:
             self._write_dependency_manifest(
                 manifest_path,
                 dep_hash,
-                {"png_hash": file_hash(final_png), "pdf_hash": file_hash(final_pdf)},
+                {
+                    "png_hash": file_hash(final_png),
+                    "pdf_hash": file_hash(final_pdf),
+                    "svg_hash": file_hash(svg),
+                },
             )
         state["final_png_ref"] = str(final_png)
         state["final_pdf_ref"] = str(final_pdf)
         state["final_render_hash"] = dep_hash
+        state["artifact_refs"]["final:svg"] = str(final_svg)
+        editable_ref = self.store.write_json(
+            state["run_id"],
+            "final/editable_layout.json",
+            {
+                "schema_version": "editable-layout.v1",
+                "run_id": state["run_id"],
+                "project_id": project.project_id,
+                "units": "mm",
+                "canvas": {
+                    "width_mm": dieline.width_mm,
+                    "height_mm": dieline.height_mm,
+                    "dieline_version": dieline.version,
+                },
+                "candidate": candidate.model_dump(mode="json"),
+                "artwork_refs": self._artwork_ref_map(state),
+                "artwork_hashes": state["artwork_hashes"],
+                "assets": {
+                    "ocop_logo": str(project.branding.ocop.logo_path),
+                    "brand_logos": [
+                        logo.model_dump(mode="json") for logo in project.branding.logos
+                    ],
+                },
+                "preview": str(final_png),
+                "print_pdf": str(final_pdf),
+            },
+        )
+        print_spec_ref = self.store.write_json(
+            state["run_id"],
+            "final/print_spec.json",
+            {
+                "recommended_file": str(final_pdf),
+                "fallback_png": str(final_png),
+                "canvas_width_mm": dieline.width_mm,
+                "canvas_height_mm": dieline.height_mm,
+                "png_dpi": PNG_RENDER_DPI,
+                "png_width_px": round(dieline.width_mm / 25.4 * PNG_RENDER_DPI),
+                "png_height_px": round(dieline.height_mm / 25.4 * PNG_RENDER_DPI),
+                "print_scale": "100%",
+                "notes": [
+                    "Use the PDF for printing; text, QR, and vector shapes stay sharper.",
+                    "Use the PNG only when the print vendor cannot accept PDF.",
+                    "Do not upscale or fit-to-page; print at 100% scale.",
+                ],
+                "renderer_version": RENDERER_VERSION,
+            },
+        )
+        state["artifact_refs"]["final:editable_layout"] = editable_ref
+        state["artifact_refs"]["final:print_spec"] = print_spec_ref
         self._transition(state, RunStatus.FINAL_RENDERED, "render_final_outputs")
 
     def _run_final_qa(self, state: PackagingState) -> None:
@@ -851,6 +977,8 @@ class WorkflowRunner:
         state["qa_report_ref"] = self.store.write_json_once(
             state["run_id"], "qa/qa_report.json", report.model_dump(mode="json")
         )
+        if not report.passed:
+            self._record_qa_failure(state, report, "run_final_qa", "qa/final_failures.json")
         self._transition(
             state,
             RunStatus.FINAL_QA_PASSED if report.passed else RunStatus.FAILED_QA,
@@ -861,7 +989,13 @@ class WorkflowRunner:
         self._validate_approval(state)
         manifest = {
             "state": self._serializable(state),
-            "final": {"png": state["final_png_ref"], "pdf": state["final_pdf_ref"]},
+            "final": {
+                "png": state["final_png_ref"],
+                "pdf": state["final_pdf_ref"],
+                "svg": state["artifact_refs"].get("final:svg"),
+            },
+            "editable": {"layout": state["artifact_refs"].get("final:editable_layout")},
+            "print": {"spec": state["artifact_refs"].get("final:print_spec")},
         }
         self.store.write_json(state["run_id"], "run_manifest.json", manifest)
         self._transition(state, RunStatus.EXPORTED, "export_bundle")
@@ -875,6 +1009,56 @@ class WorkflowRunner:
             self._selected_candidate(state),
             png,
         )
+
+    def _record_qa_failure(
+        self, state: PackagingState, report: QAReport, node: str, relative: str
+    ) -> None:
+        failed = [item for item in report.results if not item.passed]
+        rule_ids = ", ".join(item.rule_id for item in failed[:8]) or "unknown"
+        ref = self.store.write_json(
+            state["run_id"],
+            relative,
+            {
+                "run_id": state["run_id"],
+                "candidate_id": report.candidate_id,
+                "status": "FAILED_QA",
+                "failed_count": len(failed),
+                "critical_count": sum(item.severity == "critical" for item in failed),
+                "rules": [
+                    {
+                        "rule_id": item.rule_id,
+                        "severity": item.severity,
+                        "element_ids": item.element_ids,
+                        "message": item.message,
+                        "action_hint": self._qa_action_hint(item.rule_id),
+                        "details": item.details,
+                    }
+                    for item in failed
+                ],
+            },
+        )
+        state["artifact_refs"][f"qa:{node}:failures"] = ref
+        state["errors"].append(
+            WorkflowError(
+                code="QA_FAILED",
+                message=(
+                    f"{len(failed)} QA rule(s) failed for {report.candidate_id}: "
+                    f"{rule_ids}; details={ref}"
+                ),
+                node=node,
+            )
+        )
+
+    def _qa_action_hint(self, rule_id: str) -> str:
+        if rule_id.startswith("TYPO"):
+            return "Increase text box size, reduce text length, or use a larger readable layout."
+        if rule_id in {"HC-04", "HC-05", "HC-06"}:
+            return "Check logo count, logo aspect ratio, and logo placement."
+        if rule_id.startswith("HC-1"):
+            return "Move the affected element inside its panel and away from protected zones."
+        if rule_id.startswith("QR"):
+            return "Increase QR size or restore the QR quiet zone."
+        return "Open the QA report for rule details."
 
     def _project(self, state: PackagingState) -> ProjectSpec:
         if state["project"] is None:
@@ -947,6 +1131,58 @@ class WorkflowRunner:
             "planner_policy_version": request.planner_policy_version,
         }
         return all(provenance.get(key) == value for key, value in expected.items())
+
+    def _shared_artwork_cache_path(self, request: ArtworkRequest) -> Path:
+        return self.store.runs_root / "_cache" / "artwork" / f"{request.request_hash}.png"
+
+    def _write_artwork_manifest(
+        self,
+        manifest_path: Path,
+        request: ArtworkRequest,
+        provider: FixtureArtworkProvider | OpenAICompatibleImageProvider,
+        artifact_sha256: str,
+    ) -> None:
+        self._write_dependency_manifest(
+            manifest_path,
+            request.request_hash,
+            {
+                "artifact_sha256": artifact_sha256,
+                "concept_id": request.concept_id,
+                "provider": provider.provider,
+                "model": provider.model,
+                "width": str(request.target_width_px),
+                "height": str(request.target_height_px),
+                "output_format": request.output_format,
+            },
+        )
+
+    def _artwork_cache_matches(
+        self,
+        manifest_path: Path,
+        request: ArtworkRequest,
+        provider: FixtureArtworkProvider | OpenAICompatibleImageProvider,
+        artifact_path: Path,
+    ) -> bool:
+        if not manifest_path.exists():
+            return False
+        try:
+            data = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return False
+        if data.get("artifact_sha256") != file_hash(artifact_path):
+            return False
+        return all(
+            data.get(key) == value
+            for key, value in {
+                "dependency_hash": request.request_hash,
+                "concept_id": request.concept_id,
+                "provider": provider.provider,
+                "model": provider.model,
+                "width": str(request.target_width_px),
+                "height": str(request.target_height_px),
+                "output_format": request.output_format,
+            }.items()
+        )
 
     def _write_dependency_manifest(
         self, manifest_path: Path, dependency_hash: str, payload: dict[str, str]

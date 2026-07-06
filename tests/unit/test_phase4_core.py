@@ -20,12 +20,13 @@ from ocop_pack.agents.visual_critic.guard import (
 )
 from ocop_pack.agents.visual_critic.rubric import weighted_total
 from ocop_pack.agents.visual_critic.schemas import CandidateAestheticScore, CriticDecision
-from ocop_pack.application.ports.artwork_provider import ArtworkResult
+from ocop_pack.application.ports.artwork_provider import ArtworkRequest, ArtworkResult
 from ocop_pack.application.ports.vision_critic import CriticRequest
 from ocop_pack.cache.cache_keys import critic_cache_key, revision_cache_key
 from ocop_pack.domain.dieline import load_dieline
 from ocop_pack.domain.geometry import BoundingBox
 from ocop_pack.domain.layout import LayoutElement, LayoutManifest
+from ocop_pack.domain.qa import ConstraintResult, QAReport
 from ocop_pack.engine.candidate_generator import attach_artwork_layers, generate_candidates
 from ocop_pack.engine.constraints import candidate_passed, evaluate_candidate
 from ocop_pack.engine.contact_sheet import render_contact_sheet, select_top_k
@@ -43,6 +44,7 @@ from ocop_pack.orchestration.runner import WorkflowRunner, build_artwork_prompt
 from ocop_pack.orchestration.status import RunStatus
 from ocop_pack.provenance.models import ArtworkProvenance, ProviderContext
 from ocop_pack.providers.common.errors import ProviderAuthenticationError
+from ocop_pack.providers.image.fixture import FixtureArtworkProvider
 from ocop_pack.providers.vision.mock import MockVisualCriticProvider
 from ocop_pack.schemas.design_planner import DesignPlan
 
@@ -176,6 +178,17 @@ def test_phase4_product_themes_are_distinct(example_project) -> None:
             "fill"
         ]
     )
+
+
+def test_phase4_green_hex_palette_maps_to_matcha_theme(example_project) -> None:
+    dieline = load_dieline(example_project.packaging.size_id)
+    candidate = generate_candidates(
+        example_project,
+        dieline,
+        design_plan=_phase4_plan(["#D4E7C5", "#BFD8AF", "#A0C49D"]),
+    )[0]
+
+    assert candidate.metadata["visual_theme"]["theme_id"] == "matcha_refined"
 
 
 def test_dynamic_template_families_are_structurally_distinct(example_project) -> None:
@@ -323,6 +336,7 @@ def test_phase4_artwork_opacity_theme_bounds_and_qa(example_project, tmp_path: P
         "opacity"
     ]
     assert h_opacity != m_opacity
+    assert min(h_opacity, m_opacity) >= 0.7
     assert (
         honey.metadata["visual_theme"]["artwork_opacity_range"][0]
         <= h_opacity
@@ -361,6 +375,108 @@ def test_phase4_renderer_requires_theme_text_color(example_project, tmp_path: Pa
     scene = scene_from_manifest(manifest, dieline.width_mm, dieline.height_mm)
     with pytest.raises(RenderAssetError, match="missing theme text color"):
         render_png(scene, example_project, tmp_path / "bad.png")
+
+
+def test_renderer_uses_ocop_logo_png(example_project, tmp_path: Path) -> None:
+    logo = tmp_path / "ocop.png"
+    Image.new("RGBA", (80, 40), (255, 0, 255, 255)).save(logo)
+    project = example_project.model_copy(
+        update={
+            "branding": example_project.branding.model_copy(
+                update={
+                    "ocop": example_project.branding.ocop.model_copy(
+                        update={"logo_path": logo}
+                    )
+                }
+            )
+        }
+    )
+    scene = Scene(
+        run_id="ocop_logo",
+        project_id=project.project_id,
+        width_mm=20,
+        height_mm=20,
+        elements=[
+            SceneElement(
+                element_id="ocop_lockup",
+                kind="group",
+                source_ref="branding.ocop.logo_path",
+                bbox_mm=BoundingBox(x_mm=5, y_mm=5, width_mm=10, height_mm=10),
+            )
+        ],
+    )
+    out = render_png(scene, project, tmp_path / "ocop_render.png", dpi=254)
+
+    with Image.open(out).convert("RGB") as rendered:
+        assert rendered.getpixel((100, 100)) == (255, 0, 255)
+
+
+def test_renderer_uses_ocop_star_variant_when_available(example_project, tmp_path: Path) -> None:
+    logo = tmp_path / "ocop.png"
+    variant = tmp_path / "ocop_5_star.png"
+    Image.new("RGBA", (80, 40), (255, 0, 255, 255)).save(logo)
+    Image.new("RGBA", (80, 40), (0, 255, 255, 255)).save(variant)
+    project = example_project.model_copy(
+        update={
+            "branding": example_project.branding.model_copy(
+                update={
+                    "ocop": example_project.branding.ocop.model_copy(
+                        update={"logo_path": logo, "star_count": 5}
+                    )
+                }
+            )
+        }
+    )
+    scene = Scene(
+        run_id="ocop_logo_variant",
+        project_id=project.project_id,
+        width_mm=20,
+        height_mm=20,
+        elements=[
+            SceneElement(
+                element_id="ocop_lockup",
+                kind="group",
+                source_ref="branding.ocop.logo_path",
+                bbox_mm=BoundingBox(x_mm=5, y_mm=5, width_mm=10, height_mm=10),
+                metadata={"star_count": 5},
+            )
+        ],
+    )
+    out = render_png(scene, project, tmp_path / "ocop_variant_render.png", dpi=254)
+
+    with Image.open(out).convert("RGB") as rendered:
+        assert rendered.getpixel((100, 100)) == (0, 255, 255)
+
+
+def test_renderer_blends_shape_opacity(example_project, tmp_path: Path) -> None:
+    scene = Scene(
+        run_id="shape_alpha",
+        project_id=example_project.project_id,
+        width_mm=10,
+        height_mm=10,
+        elements=[
+            SceneElement(
+                element_id="background",
+                kind="shape",
+                source_ref="system.background",
+                bbox_mm=BoundingBox(x_mm=0, y_mm=0, width_mm=10, height_mm=10),
+                metadata={"fill": "#ffffff", "opacity": 1.0},
+            ),
+            SceneElement(
+                element_id="scrim",
+                kind="shape",
+                source_ref="system.readability_guard",
+                bbox_mm=BoundingBox(x_mm=0, y_mm=0, width_mm=10, height_mm=10),
+                z_index=1,
+                metadata={"fill": "#000000", "opacity": 0.5},
+            ),
+        ],
+    )
+
+    out = render_png(scene, example_project, tmp_path / "shape_alpha.png", dpi=25.4)
+
+    with Image.open(out).convert("RGB") as rendered:
+        assert rendered.getpixel((5, 5)) == (127, 127, 127)
 
 
 def test_phase4_unsupported_palette_intent_fails(example_project) -> None:
@@ -448,19 +564,61 @@ def test_phase4_offline_pass_path(tmp_path: Path) -> None:
     assert (tmp_path / "phase4_unit" / "critic" / "critic_decision.json").exists()
 
 
+def test_qa_failure_writes_ui_failure_payload(tmp_path: Path) -> None:
+    runner = WorkflowRunner(runs_root=tmp_path)
+    state = runner.start(Path("examples/projects/tea_basic/project.yaml"), "qa_failure_payload")
+    report = QAReport(
+        run_id="qa_failure_payload",
+        candidate_id="C001",
+        passed=False,
+        results=[
+            ConstraintResult(
+                rule_id="TYPO-00",
+                passed=False,
+                severity="critical",
+                element_ids=["left_text"],
+                message="text cannot satisfy typography constraints",
+                details={"reason": "too_small"},
+            )
+        ],
+    )
+
+    runner._record_qa_failure(  # noqa: SLF001
+        state, report, "run_draft_qa", "qa/draft_failures.json"
+    )
+
+    ref = state["artifact_refs"]["qa:run_draft_qa:failures"]
+    payload = json.loads(Path(ref).read_text(encoding="utf-8"))
+    assert state["errors"][-1].code == "QA_FAILED"
+    assert "details=" in state["errors"][-1].message
+    assert payload["candidate_id"] == "C001"
+    assert payload["critical_count"] == 1
+    assert payload["rules"][0]["element_ids"] == ["left_text"]
+    assert "text box" in payload["rules"][0]["action_hint"]
+
+
 def test_typography_resolver_shared_lines_rotation_and_hierarchy(example_project) -> None:
     dieline = load_dieline(example_project.packaging.size_id)
     candidate = generate_candidates(example_project, dieline)[0]
     layouts = resolve_candidate_typography(example_project, candidate, dpi=150)
     assert layouts["title"].font_size_pt > layouts["left_text"].font_size_pt
-    assert layouts["left_text"].rotation_deg in {0, 90}
-    assert layouts["right_text"].rotation_deg in {90, 270}
+    assert layouts["left_text"].rotation_deg == 0
+    assert layouts["right_text"].rotation_deg == 0
     assert all(len(line.split()) > 1 for line in layouts["left_text"].lines[:-1])
     for layout in layouts.values():
         assert Path(layout.font_path).exists()
         assert len(layout.font_hash) == 64
         assert layout.pdf_font_name.startswith("OCOP-")
         assert layout.font_size_pt >= 8 or layout.role == "product_subtitle"
+
+
+def test_readable_side_label_sources_pass_required_source_rule(example_project) -> None:
+    dieline = load_dieline(example_project.packaging.size_id)
+    candidate = generate_candidates(example_project, dieline)[0]
+    results = evaluate_candidate(example_project, dieline, candidate)
+
+    assert any(e.source_ref == "product.net_content" for e in candidate.elements)
+    assert candidate_passed(results)
 
 
 def test_typography_rejects_duplicate_producer_and_missing_font(example_project) -> None:
@@ -902,6 +1060,43 @@ def test_artwork_mutation_invalidates_preview_contact_and_final(tmp_path: Path) 
     assert Path(approved["final_png_ref"] or "").read_bytes() != final_before
 
 
+def test_final_render_writes_print_spec(tmp_path: Path) -> None:
+    runner = WorkflowRunner(runs_root=tmp_path)
+    state = runner.start(Path("examples/projects/tea_basic/project.yaml"), "print_spec")
+    approved = runner.approve("print_spec", state["selected_candidate_id"] or "", "test")
+
+    spec_ref = approved["artifact_refs"]["final:print_spec"]
+    spec = json.loads(Path(spec_ref).read_text(encoding="utf-8"))
+
+    assert spec["recommended_file"] == approved["final_pdf_ref"]
+    assert spec["fallback_png"] == approved["final_png_ref"]
+    assert spec["png_dpi"] == 600
+    assert spec["png_width_px"] > 3000
+    assert spec["png_height_px"] > 3000
+    assert spec["print_scale"] == "100%"
+
+
+def test_final_render_writes_editable_layout(tmp_path: Path) -> None:
+    runner = WorkflowRunner(runs_root=tmp_path)
+    state = runner.start(Path("examples/projects/tea_basic/project.yaml"), "editable_layout")
+    approved = runner.approve("editable_layout", state["selected_candidate_id"] or "", "test")
+
+    editable_ref = approved["artifact_refs"]["final:editable_layout"]
+    editable = json.loads(Path(editable_ref).read_text(encoding="utf-8"))
+
+    assert editable["schema_version"] == "editable-layout.v1"
+    assert editable["units"] == "mm"
+    assert editable["canvas"]["width_mm"] > 0
+    assert editable["canvas"]["height_mm"] > 0
+    assert editable["candidate"]["candidate_id"] == approved["selected_candidate_id"]
+    assert editable["candidate"]["elements"]
+    assert editable["artwork_refs"]
+    assert editable["assets"]["ocop_logo"]
+    svg_ref = approved["artifact_refs"]["final:svg"]
+    assert Path(svg_ref).exists()
+    assert "<svg" in Path(svg_ref).read_text(encoding="utf-8")
+
+
 def test_revise_artwork_runs_once_and_regenerates_outputs(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -1134,6 +1329,38 @@ def test_planner_cache_mismatch_fails_closed(tmp_path: Path) -> None:
     assert state["llm_calls"] == before_calls + 1
     refreshed = json.loads(provenance_path.read_text())
     assert refreshed["model"] == "mock-planner-v2"
+
+
+def test_artwork_cache_reuses_identical_requests_across_runs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    calls: list[tuple[str, str]] = []
+    original = FixtureArtworkProvider.generate
+
+    def tracked_generate(
+        self: FixtureArtworkProvider,
+        request: ArtworkRequest,
+        context: ProviderContext,
+        output_dir: Path,
+    ) -> ArtworkResult:
+        calls.append((context.run_id, request.concept_id))
+        return original(self, request, context, output_dir)
+
+    monkeypatch.setattr(FixtureArtworkProvider, "generate", tracked_generate)
+
+    first = WorkflowRunner(runs_root=tmp_path).start(
+        Path("examples/projects/tea_basic/project.yaml"), "artwork_cache_a"
+    )
+    second = WorkflowRunner(runs_root=tmp_path).start(
+        Path("examples/projects/tea_basic/project.yaml"), "artwork_cache_b"
+    )
+
+    assert first["image_calls"] == len(calls)
+    assert first["image_calls"] > 0
+    assert second["image_calls"] == 0
+    assert second["cache_hits"] >= first["image_calls"]
+    assert len(calls) == first["image_calls"]
 
 
 def test_planner_intent_fields_map_to_candidate_outputs(example_project) -> None:

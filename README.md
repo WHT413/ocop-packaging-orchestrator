@@ -1,69 +1,180 @@
-# OCOP Packaging Orchestrator
+# OCOP Packaging Orchestrator – AI Service
 
-Deterministic OCOP packaging orchestration for full-spread layout prototypes. The system validates structured project input, resolves immutable dielines, plans safe design intent, generates artwork-backed candidates, runs deterministic QA, supports optional sandbox AI providers, and renders auditable PNG/PDF outputs from scene manifests.
+> Deterministic + AI-assisted OCOP product packaging design system.  
+> From structured product input → full-spread layout candidates → AI artwork → visual QA → print-ready PNG/PDF/SVG output.
 
-## Current Scope
-- Pydantic input schemas, fixed size profiles, millimetre geometry, deterministic candidate generation, typography, visual themes, logo/OCOP/QR checks, internal scene, PNG/PDF renderer, local artifacts, CLI, tests, and documentation.
-- Phase 3/4 provider workflow with offline mock/fixture providers by default and opt-in OpenAI-compatible planner, image, vision critic, and artwork revision ports.
-- Contact sheet review, critic decisions, bounded revision loop, provenance, retry/error handling, budget guards, checkpoint/resume support, and acceptance evidence helpers.
+## Features
 
-## Out Of Scope
-- No production print certification, PostgreSQL, MinIO, Redis, queues, distributed workers, or unbounded AI spend.
-- Real provider tests are opt-in and require sandbox credentials; default CI/local validation stays offline and deterministic.
+| Category | Details |
+|---|---|
+| **Dieline Sizes** | 8 OCOP full-spread profiles from 100×100 mm to 260×160 mm |
+| **Layout Engine** | Template-driven candidate generator with retail-surface styling, visual themes, typography, EAN-13 barcode, QR code |
+| **AI Providers** | Pluggable planner, image generation, visual critic, artwork revision (OpenAI-compatible or mock/fixture) |
+| **Orchestration** | Workflow runner with checkpoint/resume, bounded revision loop, budget guards, provenance |
+| **Outputs** | High-res PNG (600 DPI), PDF, SVG, editable layout JSON, contact sheet, QA report |
+| **Review Loop** | Visual critic selects best candidate, QA validates constraints, human approval gate before final export |
 
 ## Architecture
-- `domain`: typed contracts and geometry; no infrastructure imports.
-- `engine`: deterministic layout, constraints, typography, visual themes, QR, contact sheets, scene, renderer.
-- `agents`: prompt registries, planner input assembly, visual critic guardrails, and rubrics.
-- `providers`: mock/fixture and OpenAI-compatible adapters for planner, image, vision critic, and revision flows.
-- `orchestration`: workflow runner, checkpointing, statuses, budgets, idempotency, and approval gates.
-- `infrastructure`: SQLite, local storage, logging/config.
-- `services`: validation, rendering, layout, and QA helpers.
-- `cli`: Typer commands.
 
-## Repository Structure
-See `src/ocop_pack`, `configs`, `examples`, `tests`, `scripts`, and `docs`.
+```
+src/ocop_pack/
+├── domain/          # Pydantic contracts, geometry (mm), dieline, layout, QA models
+├── engine/          # Candidate generation, barcode, QR, constraints, typography, visual themes, renderer
+├── agents/          # Design planner + visual critic prompt registries, guardrails, rubrics
+├── providers/       # Mock/fixture (offline) and OpenAI-compatible adapters
+├── orchestration/   # Workflow runner, checkpoints, statuses, budgets, idempotency
+├── schemas/         # Shared Pydantic schemas for planner/critic I/O
+├── services/        # Validation, rendering, layout, SVG, QA helpers
+├── provenance/      # Audit trail models
+├── infrastructure/  # SQLite, local storage, logging/config
+├── cli/             # Typer CLI commands
+└── assets/          # Font files, OCOP logo templates
+```
+
+**Key design principles:**
+- All geometry in millimetres. Pixel/PDF coordinates derive from mm canvas.
+- Domain layer has zero infrastructure imports.
+- Mock providers are deterministic → safe for CI without API keys.
+- Input product text is sacred: never rewritten, summarized, or auto-filled.
+
+## Supported Dieline Sizes
+
+| Size ID | Dimensions (W×H mm) |
+|---|---|
+| `OCOP_100X100` | 100 × 100 |
+| `OCOP_130X130` | 130 × 130 |
+| `OCOP_130X150` | 130 × 150 |
+| `OCOP_156X180` | 156 × 180 |
+| `OCOP_180X120` | 180 × 120 |
+| `OCOP_200X150` | 200 × 150 |
+| `OCOP_220X140` | 220 × 140 |
+| `OCOP_260X160` | 260 × 160 |
+
+Each size has a versioned YAML config in `configs/size_profiles/`.
 
 ## Prerequisites
-- Python 3.12 managed by uv.
-- uv package manager.
+
+- Python 3.12
+- [uv](https://docs.astral.sh/uv/) package manager
 
 ## Install
+
 ```bash
 uv python install 3.12
 uv sync
 ```
 
-## SQLite
+## Quick Start
+
 ```bash
+# Initialize local SQLite metadata store
 uv run ocop-pack init-db
-```
 
-## Example
-```bash
+# Validate a project
 uv run ocop-pack validate examples/projects/tea_basic/project.yaml
-uv run ocop-pack generate-candidates examples/projects/tea_basic/project.yaml --run-id run_demo_001
-uv run ocop-pack render-candidate --run-id run_demo_001 --candidate-id C001
-uv run ocop-pack qa --run-id run_demo_001 --candidate-id C001
+
+# Full offline pipeline (deterministic, no API keys needed)
+uv run ocop-pack run examples/projects/tea_basic/project.yaml --run-id demo_001
+
+# Inspect run status
+uv run ocop-pack inspect demo_001
+
+# Approve and export final outputs
+uv run ocop-pack approve --run-id demo_001 --candidate C001 --approved-by reviewer
 ```
 
-## Workflow Runner
-Offline mode is deterministic and uses mock/fixture providers, so it is safe for CI and local development without API keys.
+## Example Projects
+
+9 complete OCOP product examples with Vietnamese packaging data:
+
+| Project | OCOP Stars | Category |
+|---|---|---|
+| `tea_basic` | 3★ | Trà thảo mộc |
+| `honey_basic` | 3★ | Mật ong hoa cà phê |
+| `matcha_basic` | 3★ | Bột trà xanh matcha |
+| `ginger_honey_basic` | 3★ | Trà gừng mật ong |
+| `coffee_4star_basic` | 4★ | Cà phê rang xay |
+| `lotus_seed_5star_basic` | 5★ | Hạt sen sấy |
+| `banana_chip_2star_basic` | 2★ | Chuối sấy giòn |
+| `local_jam_1star_basic` | 1★ | Mứt dâu tằm |
+| `che_day_landscape` | 3★ | Chè dây (landscape) |
+
+Run any example:
 
 ```bash
-uv run ocop-pack run examples/projects/tea_basic/project.yaml --run-id phase4_demo
-uv run ocop-pack status phase4_demo
-uv run ocop-pack approve phase4_demo --candidate-id C001 --approved-by reviewer
+uv run ocop-pack run examples/projects/coffee_4star_basic/project.yaml --run-id coffee_demo
+uv run ocop-pack run examples/projects/lotus_seed_5star_basic/project.yaml --run-id lotus_demo
 ```
 
-Set provider environment variables from `.env.example` and pass the CLI online flag only for sandbox runs that should call configured providers.
+## Online Mode (AI Providers)
 
-## Providers
-- `mock` / `fixture`: deterministic offline providers used by default for planner, artwork, visual critic, and revision tests.
-- `openai-compatible`: opt-in HTTP adapters for configured planner, image, and vision endpoints.
-- Provider sandbox tests are marked with `provider_sandbox` or `real_ai` and may spend one bounded external call.
+Set provider environment variables from `.env.example`, then:
 
-## Tests And Quality
+```bash
+uv run ocop-pack run examples/projects/tea_basic/project.yaml --run-id online_demo --online
+```
+
+Online mode uses configured OpenAI-compatible endpoints for:
+- **Design Planner**: generates visual direction, palette, artwork concepts, layout intents
+- **Image Provider**: generates decorative artwork from planner prompts
+- **Visual Critic**: evaluates and selects best candidate from contact sheet
+- **Revision Provider**: iterates artwork based on critic feedback
+
+## Output Structure
+
+```
+runs/<run_id>/
+├── input/                        # Copied project input
+├── geometry/dieline_overlay.pdf  # Dieline visualization
+├── candidates/candidates.json    # All generated layout candidates
+├── previews/
+│   ├── C001.png ... C006.png     # Individual candidate previews
+│   └── contact_sheet.png         # Side-by-side comparison
+├── artwork/                      # AI-generated artwork files
+├── critic/
+│   ├── critic_request.json       # Input sent to visual critic
+│   └── critic_decision.json      # Critic selection + rationale
+├── final/
+│   ├── packaging.png             # High-res raster (600 DPI)
+│   ├── packaging.pdf             # Print-ready PDF
+│   ├── packaging.svg             # Editable vector
+│   ├── editable_layout.json      # UI-editable layout contract
+│   └── print_spec.json           # Print metadata
+├── qa/qa_report.json             # QA constraint check results
+├── internal/                     # Scene manifests
+└── run_manifest.json             # Run provenance & status
+```
+
+## Edit & Re-render
+
+After editing `editable_layout.json` (manually or via UI):
+
+```bash
+uv run ocop-pack render-editable \
+  --editable-layout runs/<run_id>/final/editable_layout.json \
+  --project-yaml examples/projects/tea_basic/project.yaml \
+  --out-dir runs/<run_id>/edited
+```
+
+## Barcode & QR Code
+
+- **EAN-13 Barcode**: auto-generated from `project_id` via SHA-256 → valid EAN-13 encoding. Controlled by `packaging.show_barcode` in project YAML.
+- **QR Code**: generated from `packaging.qr_payload`. Controlled by `packaging.show_qr`. Defaults to `https://ocop.example.local/product` if not specified.
+
+Both are optional — set `show_barcode: true` and/or `show_qr: true` in the project YAML to include them.
+
+## Operations Report
+
+```bash
+# Audit local runs
+uv run ocop-pack ops-report --runs-root runs --out runs/ops_report.json
+
+# Fail on issues (CI gate)
+uv run ocop-pack ops-report --runs-root runs --out runs/ops_report.json --fail-on-issues
+```
+
+## Tests & Quality
+
 ```bash
 uv run ruff check src tests
 uv run ruff format --check src tests
@@ -71,24 +182,20 @@ uv run mypy src/ocop_pack
 uv run pytest -q -m "not real_ai and not provider_sandbox"
 ```
 
-## Output Folder
-```text
-runs/<run_id>/input
-runs/<run_id>/geometry/dieline_overlay.pdf
-runs/<run_id>/candidates/candidates.json
-runs/<run_id>/previews/contact_sheet.png
-runs/<run_id>/critic/critic_request.json
-runs/<run_id>/critic/critic_decision.json
-runs/<run_id>/artwork
-runs/<run_id>/internal
-runs/<run_id>/final/packaging.png
-runs/<run_id>/final/packaging.pdf
-runs/<run_id>/qa/qa_report.json
-runs/<run_id>/run_manifest.json
+Provider sandbox tests are opt-in and may call external APIs:
+
+```bash
+uv run pytest -m provider_sandbox
 ```
 
 ## Known Limitations
-- Renderer is preview-oriented and must not be called printer-ready.
-- OCOP lockup verifies rendered star count from input only; it does not verify legal certification.
-- Physical fold validation remains a technical geometry check and requires print/vendor review before production.
-- Mock and fixture providers are intentional test doubles; production-like AI calls require explicit online configuration.
+
+- `packaging.png` is 600 DPI raster preview; use SVG or `editable_layout.json` for editing.
+- OCOP star count is rendered from user input only; no legal certification verification.
+- Physical fold validation is a geometry check — requires print/vendor review before production.
+- Mock/fixture providers are test doubles; production AI needs explicit online configuration.
+- No production auth, object storage, or multi-user support yet (Phase 5 future work).
+
+## License
+
+Internal project — Vibecast / FPT University Summer 2026.

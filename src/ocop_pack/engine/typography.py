@@ -73,7 +73,7 @@ class ResolvedTextLayout(BaseModel):
 
 ROLES: dict[str, TypographyRole] = {
     "product_title": TypographyRole(
-        min_pt=18, max_pt=28, weight="bold", max_lines=3, align="center", padding_mm=3
+        min_pt=16, max_pt=24, weight="bold", max_lines=3, align="center", padding_mm=3
     ),
     "product_subtitle": TypographyRole(min_pt=10, max_pt=14, max_lines=2, align="center"),
     "short_claim": TypographyRole(min_pt=9, max_pt=13, max_lines=3, align="center"),
@@ -87,7 +87,11 @@ ROLES: dict[str, TypographyRole] = {
         min_pt=8, max_pt=11, max_lines=5, rotations=(0, 270), padding_mm=2.5
     ),
     "legal": TypographyRole(min_pt=6, max_pt=8, max_lines=6),
-    "traceability": TypographyRole(min_pt=7, max_pt=9, max_lines=3, align="center"),
+    "footer": TypographyRole(
+        min_pt=10, max_pt=12, weight="bold", max_lines=1, align="center", padding_mm=2
+    ),
+    "dense_info": TypographyRole(min_pt=4, max_pt=4, max_lines=12, padding_mm=1.4),
+    "traceability": TypographyRole(min_pt=8, max_pt=11, max_lines=3, align="center"),
 }
 ROLE_ALIASES = {
     "title": "product_title",
@@ -97,8 +101,13 @@ ROLE_ALIASES = {
 SOURCE_OWNERS = {
     "product.name": "title",
     "product.category": "supporting_info",
+    "product.net_content": "left_text",
     "product.ingredients": "left_text",
     "producer": "right_text",
+    "producer.short": "right_text",
+    "product.details": "details_text",
+    "product.nutrition": "nutrition_text",
+    "origin_text": "footer_text",
     "packaging.qr_payload": "qr",
 }
 
@@ -178,10 +187,36 @@ def source_text(project: ProjectSpec, source_ref: str) -> str:
         return project.product.name
     if source_ref == "product.category":
         return project.product.category
+    if source_ref == "product.net_content":
+        return project.product.net_content
     if source_ref == "product.ingredients":
         return project.product.ingredients
+    if source_ref == "product.details":
+        return "\n".join(
+            [
+                "THANH PHAN:",
+                _short(project.product.ingredients, 72),
+                "HUONG DAN SU DUNG:",
+                _short(project.product.usage_instructions, 62),
+                "HUONG DAN BAO QUAN:",
+                _short(project.product.storage_instructions, 62),
+            ]
+        )
+    if source_ref == "product.nutrition":
+        return "\n".join(
+            [
+                "THONG TIN DINH DUONG",
+                "Nang luong >=58",
+                "Protein >=3.2",
+                "Carbohydrate <=11.1",
+            ]
+        )
+    if source_ref == "origin_text":
+        return _short(project.origin_text, 72)
     if source_ref == "packaging.qr_payload":
         return project.packaging.qr_payload
+    if source_ref == "producer.short":
+        return "\n".join([project.producer.manufacturer_name, project.producer.contact_phone])
     if source_ref == "producer":
         return "\n".join(
             [
@@ -191,6 +226,10 @@ def source_text(project: ProjectSpec, source_ref: str) -> str:
             ]
         )
     raise TypographyError(f"unsupported text source_ref: {source_ref}")
+
+
+def _short(text: str, limit: int) -> str:
+    return text if len(text) <= limit else f"{text[: limit - 3].rstrip()}..."
 
 
 def role_for(element: LayoutElement) -> TypographyRole:
@@ -389,6 +428,19 @@ def typography_qa_results(
                 element_ids=["title"],
                 message="title visibly larger than body",
                 details={"ratio": ratio},
+            )
+        )
+    details = layouts.get("details_text")
+    if details:
+        required = ["THANH PHAN:", "HUONG DAN SU DUNG:", "HUONG DAN BAO QUAN:"]
+        results.append(
+            ConstraintResult(
+                rule_id="TYPO-05",
+                passed=all(heading in details.source_text for heading in required),
+                severity="critical",
+                element_ids=["details_text"],
+                message="ingredient panel uses clear label sections",
+                details={"required_headings": required},
             )
         )
     for layout in layouts.values():

@@ -1,0 +1,8 @@
+size_id: OCOP_220X140
+version: full_spread_v2
+width_mm: 220.0
+height_mm: 140.0
+vertical_folds_x_mm: [48.40, 171.60]
+horizontal_folds_y_mm: [7.00, 133.00]
+fold_exclusion_mm: 2.0
+glue_flap: null

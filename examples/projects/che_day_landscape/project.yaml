@@ -1,0 +1,29 @@
+project_id: che_day_landscape
+product:
+  name: "Che Day Truc Quan"
+  category: "Tra thao moc"
+  net_content: "250 g"
+  ingredients: "100% che day nguyen chat tu thien nhien. Khong su dung chat bao quan, khong phu gia."
+  usage_instructions: "Dung mot nam cho nau voi 1,5 lit nuoc, dun soi 3 den 5 phut."
+  storage_instructions: "Bao quan noi kho rao, thoang mat, tranh anh nang truc tiep. Dong kin bao bi sau moi lan su dung."
+  expiry_or_shelf_life: "24 thang ke tu ngay san xuat"
+producer:
+  manufacturer_name: "Co so Che Day Truc Quan"
+  manufacturer_address: "Thon Xuan Phong Bac, Xa An Hoa, Tinh Gia Lai"
+  contact_phone: "0989135179"
+origin_text: "San pham OCOP tinh Gia Lai, co nguon goc tu thien nhien An Toan"
+branding:
+  logos:
+    - asset_id: brand
+      path: assets/brand.png
+      asset_type: png
+      role: brand
+  ocop:
+    logo_path: assets/ocop.png
+    star_count: 3
+packaging:
+  size_id: OCOP_180X120
+  qr_payload: "https://example.com/ocop/che_day_landscape"
+  show_qr: true
+  show_barcode: true
+creative_brief_raw: "Bao bi ngang cho che day, phong cach tu nhien voi anh la che day, qua che chin mau do, tone xanh la dam, vang kem. Mat chinh co ten san pham lon, logo OCOP, thong tin nha san xuat. Mat ben trai co thanh phan, huong dan su dung, bao quan, thong tin dinh duong. Mat ben phai co barcode va QR."

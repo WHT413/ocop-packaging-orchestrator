@@ -73,7 +73,10 @@ def _write_diagnostic(
     }
     path = Path("data/runs_acceptance/planner_diagnostics") / f"{context.run_id}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(diagnostic, ensure_ascii=False, indent=2), encoding="utf-8")
+    path.write_text(
+        json.dumps(diagnostic, ensure_ascii=False, indent=2, default=str),
+        encoding="utf-8",
+    )
 
 
 class OpenAICompatiblePlannerProvider:

@@ -1,0 +1,29 @@
+project_id: coffee_4star_basic
+product:
+  name: "Ca phe rang xay OCOP"
+  category: "Ca phe"
+  net_content: "250 g"
+  ingredients: "Hat ca phe Robusta va Arabica chon loc, rang moc vua, xay min. Khong tron dau bo, huong lieu tong hop hay phu gia tao mau."
+  usage_instructions: "Dung 20 g ca phe cho phin 150 ml. Trang phin bang nuoc nong, u 30 giay, sau do rot nuoc nong 92-96 do C."
+  storage_instructions: "Bao quan noi kho mat, tranh nang truc tiep. Dong kin tui sau khi mo de giu huong ca phe."
+  expiry_or_shelf_life: "18 thang ke tu ngay san xuat"
+producer:
+  manufacturer_name: "HTX Ca Phe Nui Do"
+  manufacturer_address: "Dak Lak, Viet Nam"
+  contact_phone: "0977000000"
+origin_text: "San pham che bien tu vung ca phe Dak Lak, Viet Nam"
+branding:
+  logos:
+    - asset_id: brand
+      path: ../tea_basic/assets/brand.png
+      asset_type: png
+      role: brand
+  ocop:
+    logo_path: ../tea_basic/assets/ocop.png
+    star_count: 4
+packaging:
+  size_id: OCOP_130X150
+  qr_payload: "https://example.com/ocop/coffee_4star_basic"
+  show_qr: true
+  show_barcode: true
+creative_brief_raw: "Thiet ke mat truoc nhan bao bi ca phe rang xay OCOP 4 sao cho san pham ban le cao cap, dung duoc de in thu va dua len UI cho nguoi dung duyet. San pham: Ca phe rang xay OCOP, khoi luong tinh 250 g, HTX Ca Phe Nui Do, Dak Lak, Viet Nam, so dien thoai 0977000000. Phong cach: nong san Viet Nam chat luong cao, am ap, thu cong, dang tin cay; nen giay kem co texture nhe, hat ca phe rang, la ca phe, tone nau ca phe - kem - xanh olive tram, khong qua mau me. Bo cuc mong muon: logo OCOP 4 sao o vung dau, ten san pham lon va ro o trung tam, dong Ca phe ben duoi nho hon, dinh luong 250 g o goc duoi trai khong can nen khung, nha san xuat o goc phai tren, cum QR va barcode o ben phai gan nhau va gon. Khoi thong tin bat buoc: THANH PHAN gom hat ca phe Robusta va Arabica chon loc, rang moc vua, xay min; HUONG DAN SU DUNG gom dinh luong 20 g ca phe cho phin 150 ml, trang phin bang nuoc nong, u 30 giay, dung nuoc 92-96 do C; HUONG DAN BAO QUAN gom bao quan noi kho mat, tranh nang truc tiep, dong kin tui sau khi mo; THONG TIN DINH DUONG gom nang luong >=58, protein >=3.2, carbohydrate <=11.1. Yeu cau thiet ke: cac panel thong tin ro nhu nhan hang that, heading dam hon noi dung, khong de chu qua nho, khong de khoang trong lon, khong che mat hoa tiet quan trong, QR/barcode khong qua to, tong the can doi nhu bao bi nong san dang ban tren ke hang."

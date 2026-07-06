@@ -1,0 +1,29 @@
+project_id: ginger_honey_basic
+product:
+  name: "Tra gung mat ong OCOP"
+  category: "Tra gung"
+  net_content: "120 g"
+  ingredients: "Gung say lat, mat ong hat, tra thao moc, que nhe va duong phen. Huong am, cay diu, phu hop dung buoi sang hoac khi troi lanh."
+  usage_instructions: "Ham 5 g voi 200 ml nuoc nong trong 5 phut. Co the them mat ong hoac lat chanh tuy khau vi."
+  storage_instructions: "Bao quan noi kho rao, tranh am va anh nang truc tiep. Dong kin tui sau moi lan su dung."
+  expiry_or_shelf_life: "18 thang ke tu ngay san xuat"
+producer:
+  manufacturer_name: "HTX An Nhien"
+  manufacturer_address: "Hoa Binh, Viet Nam"
+  contact_phone: "0988000000"
+origin_text: "San pham che bien tu nong san Hoa Binh, Viet Nam"
+branding:
+  logos:
+    - asset_id: brand
+      path: ../tea_basic/assets/brand.png
+      asset_type: png
+      role: brand
+  ocop:
+    logo_path: ../tea_basic/assets/ocop.png
+    star_count: 3
+packaging:
+  size_id: OCOP_130X150
+  qr_payload: "https://example.com/ocop/ginger_honey_basic"
+  show_qr: true
+  show_barcode: true
+creative_brief_raw: "Nguoi dung muon bao bi tra gung mat ong OCOP day du nhu nhan ban le that, khong qua trong. Phong cach nong san am ap, tone vang kem, nau gung, xanh thao moc; artwork co gung lat, mat ong va hoi tra nhe. Component can lon va can doi: ten san pham, OCOP 3 sao, khoi luong, thong tin HTX, QR, barcode, thanh phan, huong dan, bao quan, bang dinh duong. Uu tien de doc khi in, khong de logo OCOP qua nho, khong lam nen bi mo chi tiet."

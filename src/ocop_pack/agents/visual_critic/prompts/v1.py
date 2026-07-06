@@ -36,6 +36,10 @@ Explicitly evaluate packaging-like composition, center/side hierarchy, reading
 order, text-over-artwork conflicts, readability and contrast, panel discipline,
 spacing and balance, artwork suitability, logo/OCOP visibility, and whether the
 spread remains fold-aware without relying on visible dieline lines.
+Also check whether ingredient/instruction panels look like real retail label
+sections with prominent headings, whether QR and barcode appear as a coherent
+traceability block when present, and whether net-weight badges feel contextual
+to the product/background instead of oversized generic cards.
 
 Allowed status enum values: PASS, REVISE_ARTWORK, HUMAN_REVIEW.
 Allowed targeted_revision.issue_code enum values: BACKGROUND_TOO_BUSY,
